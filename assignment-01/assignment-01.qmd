@@ -4,5 +4,5 @@ format: html
 ---
 
 ## Introduction
-The dataset I am choosing for my assignment is the OpenPowerlifting database from Kaggle. This contains information from powerlifting competitions worldwide and rows of the people that participated. These rows contain information such as gender, age, and lifting totals. I chose this dataset because I took part in powerlifting competitions and would like to see if there are any trends such as performance improvements over time, or if age and body weight affect lifting performance. You can find the dataset [here](https://www.kaggle.com/datasets/open-powerlifting/powerlifting-database).
 
+The dataset I am choosing for my assignment is the OpenPowerlifting database from Kaggle. This contains information from powerlifting competitions worldwide and rows of the people that participated. These rows contain information such as gender, age, and lifting totals. I chose this dataset because I took part in powerlifting competitions and would like to see if there are any trends such as performance improvements over time, or if age and body weight affect lifting performance. You can find the dataset [here](https://www.kaggle.com/datasets/open-powerlifting/powerlifting-database).
