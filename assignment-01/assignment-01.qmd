@@ -1,8 +1,44 @@
 ---
 title: "Assignment 1"
+author: "Kenny Jeannite"
 format: html
 ---
 
 ## Introduction
 
 The dataset I am choosing for my assignment is the OpenPowerlifting database from Kaggle. This contains information from powerlifting competitions worldwide and rows of the people that participated. These rows contain information such as gender, age, and lifting totals. I chose this dataset because I took part in powerlifting competitions and would like to see if there are any trends such as performance improvements over time, or if age and body weight affect lifting performance. You can find the dataset [here](https://www.kaggle.com/datasets/open-powerlifting/powerlifting-database).
+
+
+## Body 
+
+Here I am loading the power lifting data set from my github
+
+``` {r}
+# For this body I am loading the data from my github and loading it into R so its accessible 
+# Data-set is compressed and kind of big so it loads a bit slow.
+library(ggplot2)
+library(readr)
+url <- "https://github.com/kjeannite/data-607/raw/refs/heads/master/assignment-01/openpowerlifting.csv.gz"
+df <- read_csv(url, show_col_types = FALSE)
+```
+
+Here I created the table with Name,Sex,BodyWeightKg, WeightClassKg, and TotalKg.  I believe BodyWeight Kg would be the independant variable here and TotalKg would be the predictor variable. 
+``` {r}
+suppressPackageStartupMessages(library(dplyr)) #There was an ugly start up message that showed up if I just used library(dplyr)
+df %>% select(Name, Sex, BodyweightKg, WeightClassKg,TotalKg, Date) %>% 
+ mutate(Sex = ifelse(Sex == "M", "Male", ifelse(Sex == "F", "Female", Sex)))
+```
+Below is a graph that shows the comparison of average total lifted by each sex. As you can see men do lift higher totals, but this could be because men also weigh heaver. It only shows people that have actually completed their flits because `na.rm = TRUE` removes the people that completely bombed out of their meets. 
+
+``` {r}
+df %>%
+  filter(!is.na(Sex)) %>%
+  group_by(Sex) %>%
+  summarize(avg_total = mean(TotalKg, na.rm = TRUE)) %>%
+  ggplot(aes(x = Sex, y = avg_total, fill = Sex)) +
+  geom_col() +
+  labs(title = "Average Total Lifted by Sex", y = "Average Total (Kg)")
+```
+## Conclusions
+
+The graph above shows that males can lift more than females but one big factor is that males do tend to weight more than females. One additional change that could be made is adding an extra column for pounds for easier visualization and understanding for different parts of the world (Imperial vs Metric).

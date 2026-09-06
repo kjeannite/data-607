@@ -2,26 +2,65 @@
 <html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
 
 <meta charset="utf-8">
-<meta name="generator" content="quarto-1.9.38">
+<meta name="generator" content="quarto-1.10.18">
 
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
 
+<meta name="author" content="Kenny Jeannite">
 
 <title>Assignment 1</title>
 <style>
 /* Default styles provided by pandoc.
 ** See https://pandoc.org/MANUAL.html#variables-for-html for config info.
 */
-code{white-space: pre-wrap;}
 span.smallcaps{font-variant: small-caps;}
-div.columns{display: flex; gap: min(4vw, 1.5em);}
-div.column{flex: auto; overflow-x: auto;}
+div.columns{display: flex; gap: 1.5em;}
+div.column{flex: auto;}
+@media screen {
+div.columns{gap: min(4vw, 1.5em);}
+div.column{overflow-x: auto;}
+}
 div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
 ul.task-list{list-style: none;}
 ul.task-list li input[type="checkbox"] {
   width: 0.8em;
   margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
   vertical-align: middle;
+}
+/* CSS for syntax highlighting */
+html { -webkit-text-size-adjust: 100%; }
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+  { counter-reset: source-line 0; }
+pre.numberSource code > span
+  { position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+  { content: counter(source-line);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+  }
+pre.numberSource { margin-left: 3em;  padding-left: 4px; }
+div.sourceCode
+  {   }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
 }
 </style>
 
@@ -33,10 +72,10 @@ ul.task-list li input[type="checkbox"] {
 <script src="assignment-01_files/libs/quarto-html/tippy.umd.min.js"></script>
 <script src="assignment-01_files/libs/quarto-html/anchor.min.js"></script>
 <link href="assignment-01_files/libs/quarto-html/tippy.css" rel="stylesheet">
-<link href="assignment-01_files/libs/quarto-html/quarto-syntax-highlighting-15634bcf2e68342d4ad2dfa704d543f6.css" rel="stylesheet" id="quarto-text-highlighting-styles">
+<link href="assignment-01_files/libs/quarto-html/quarto-syntax-highlighting-64a204ab8560d761af7679ceaba22944.css" rel="stylesheet" id="quarto-text-highlighting-styles">
 <script src="assignment-01_files/libs/bootstrap/bootstrap.min.js"></script>
 <link href="assignment-01_files/libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
-<link href="assignment-01_files/libs/bootstrap/bootstrap-efbb37e9afcc02144ebbc7afd12a776f.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
+<link href="assignment-01_files/libs/bootstrap/bootstrap-215b371544c282197b31c8aa00ce3677.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
 
 
 </head>
@@ -56,6 +95,12 @@ ul.task-list li input[type="checkbox"] {
 
 <div class="quarto-title-meta">
 
+    <div>
+    <div class="quarto-title-meta-heading">Author</div>
+    <div class="quarto-title-meta-contents">
+             <p>Kenny Jeannite </p>
+          </div>
+  </div>
     
   
     
@@ -69,6 +114,61 @@ ul.task-list li input[type="checkbox"] {
 <section id="introduction" class="level2">
 <h2 class="anchored" data-anchor-id="introduction">Introduction</h2>
 <p>The dataset I am choosing for my assignment is the OpenPowerlifting database from Kaggle. This contains information from powerlifting competitions worldwide and rows of the people that participated. These rows contain information such as gender, age, and lifting totals. I chose this dataset because I took part in powerlifting competitions and would like to see if there are any trends such as performance improvements over time, or if age and body weight affect lifting performance. You can find the dataset <a href="https://www.kaggle.com/datasets/open-powerlifting/powerlifting-database">here</a>.</p>
+</section>
+<section id="body" class="level2">
+<h2 class="anchored" data-anchor-id="body">Body</h2>
+<p>Here I am loading the power lifting data set from my github</p>
+<div class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb1"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="co"># For this body I am loading the data from my github and loading it into R so its accessible </span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="co"># Data-set is compressed and kind of big so it loads a bit slow.</span></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(ggplot2)</span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(readr)</span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a>url <span class="ot">&lt;-</span> <span class="st">"https://github.com/kjeannite/data-607/raw/refs/heads/master/assignment-01/openpowerlifting.csv.gz"</span></span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a>df <span class="ot">&lt;-</span> <span class="fu">read_csv</span>(url, <span class="at">show_col_types =</span> <span class="cn">FALSE</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<p>Here I created the table with Name,Sex,BodyWeightKg, WeightClassKg, and TotalKg. I believe BodyWeight Kg would be the independant variable here and TotalKg would be the predictor variable.</p>
+<div class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb2"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="fu">suppressPackageStartupMessages</span>(<span class="fu">library</span>(dplyr)) <span class="co">#There was an ugly start up message that showed up if I just used library(dplyr)</span></span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>df <span class="sc">%&gt;%</span> <span class="fu">select</span>(Name, Sex, BodyweightKg, WeightClassKg,TotalKg, Date) <span class="sc">%&gt;%</span> </span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a> <span class="fu">mutate</span>(<span class="at">Sex =</span> <span class="fu">ifelse</span>(Sex <span class="sc">==</span> <span class="st">"M"</span>, <span class="st">"Male"</span>, <span class="fu">ifelse</span>(Sex <span class="sc">==</span> <span class="st">"F"</span>, <span class="st">"Female"</span>, Sex)))</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-stdout">
+<pre><code># A tibble: 1,423,354 × 6
+   Name             Sex    BodyweightKg WeightClassKg TotalKg Date      
+   &lt;chr&gt;            &lt;chr&gt;         &lt;dbl&gt; &lt;chr&gt;           &lt;dbl&gt; &lt;date&gt;    
+ 1 Abbie Murphy     Female         59.8 60              290   2018-10-27
+ 2 Abbie Tuong      Female         58.5 60              332.  2018-10-27
+ 3 Ainslee Hooper   Female         55.4 56               32.5 2018-10-27
+ 4 Amy Moldenhauer  Female         60   60              310   2018-10-27
+ 5 Andrea Rowan     Female        104   110             390   2018-10-27
+ 6 April Alvarez    Female         74   75              370   2018-10-27
+ 7 Ash Morgan       Female         59.8 60              345   2018-10-27
+ 8 Belinda Moloney  Female         80.4 82.5            370   2018-10-27
+ 9 Briony Williams  Female        108   110             520   2018-10-27
+10 Brooke Kowalczyk Female         74.8 75              475   2018-10-27
+# ℹ 1,423,344 more rows</code></pre>
+</div>
+</div>
+<p>Below is a graph that shows the comparison of average total lifted by each sex. As you can see men do lift higher totals, but this could be because men also weigh heaver. It only shows people that have actually completed their flits because <code>na.rm = TRUE</code> removes the people that completely bombed out of their meets.</p>
+<div class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb4"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a>df <span class="sc">%&gt;%</span></span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">filter</span>(<span class="sc">!</span><span class="fu">is.na</span>(Sex)) <span class="sc">%&gt;%</span></span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">group_by</span>(Sex) <span class="sc">%&gt;%</span></span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">summarize</span>(<span class="at">avg_total =</span> <span class="fu">mean</span>(TotalKg, <span class="at">na.rm =</span> <span class="cn">TRUE</span>)) <span class="sc">%&gt;%</span></span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a>  <span class="fu">ggplot</span>(<span class="fu">aes</span>(<span class="at">x =</span> Sex, <span class="at">y =</span> avg_total, <span class="at">fill =</span> Sex)) <span class="sc">+</span></span>
+<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_col</span>() <span class="sc">+</span></span>
+<span id="cb4-7"><a href="#cb4-7" aria-hidden="true" tabindex="-1"></a>  <span class="fu">labs</span>(<span class="at">title =</span> <span class="st">"Average Total Lifted by Sex"</span>, <span class="at">y =</span> <span class="st">"Average Total (Kg)"</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output-display">
+<div>
+<figure class="figure">
+<p><img src="assignment-01_files/figure-html/unnamed-chunk-3-1.png" class="img-fluid figure-img" width="672"></p>
+</figure>
+</div>
+</div>
+</div>
+</section>
+<section id="conclusions" class="level2">
+<h2 class="anchored" data-anchor-id="conclusions">Conclusions</h2>
+<p>The graph above shows that males can lift more than females but one big factor is that males do tend to weight more than females. One additional change that could be made is adding an extra column for pounds for easier visualization and understanding for different parts of the world (Imperial vs Metric).</p>
 </section>
 
 </main>
