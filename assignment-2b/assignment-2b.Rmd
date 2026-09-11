@@ -1,0 +1,14 @@
+---
+title: "assignment-2b"
+output: html_document
+date: "2026-09-11"
+author: "Kenny Jeannite"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Introduction
+
+A model predicting wheter a penguin is female may provide a probabily, but that still needs to turn into a decision. The threshold to make that decision could change now only how many penguins are classified as female, but also the types of mistakes the model makes. The main question I want to answer is, how does changing the models classification threshold affects its performance, and what tradeoffs come with requiring more or less confidence before classifying a penguin as female? To answer this I plan to first examine the distribution of male and female penguins to establish a baseline of what to expect. I want to compare how accuracy, precision, recall, and f1 score metric change and what those changes mean for the models predicitions. The main question I want to answer is: how does changing the probabilty threshold affect accurany and the types of errors made in the penguin predicitions. 

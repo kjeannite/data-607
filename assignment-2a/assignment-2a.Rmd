@@ -1,0 +1,16 @@
+---
+title: "assignment-2a"
+output: html_document
+date: "2026-09-10"
+author: "Kenny Jeannite"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Introduction
+
+Not every movie appeals to every viewer. By asking respondents to rate each movie on a scale from 1 (terrible) to 5 (amazing), I can identify which of six recent releases are best received within my sample. I plan to collect responses through a Google Form using a radio-button scale, with an additional option for "did not watch this movie." The core question I want to answer is: among the people I surveyed, which of these six recent releases is the most well-liked, and how much does that opinion vary from person to person?
+
+One data challenge I anticipate is that most respondents will not have seen every one of the six movies, resulting in incomplete rating data for each person. To handle missing ratings, I will store unseen movies as NULL in the SQL database rather than as 0, since 0 would misrepresent "no opinion" as "worst possible rating" and skew average scores downward. When loading the data into R, these will appear as NA, and I will use na.rm = TRUE when computing averages so that unseen movies don't distort the results. I will also report the number of respondents who rated each movie, since an average based on a small number of ratings carries less weight than one based on a large number.

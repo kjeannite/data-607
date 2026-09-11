@@ -39,6 +39,7 @@ df %>%
   geom_col() +
   labs(title = "Average Total Lifted by Sex", y = "Average Total (Kg)")
 ```
+
 ## Conclusions
 
 The graph above shows that males can lift more than females but one big factor is that males do tend to weight more than females. One additional change that could be made is adding an extra column for pounds for easier visualization and understanding for different parts of the world (Imperial vs Metric).
