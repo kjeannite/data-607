@@ -7,8 +7,227 @@ author: "Kenny Jeannite"
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
+library(dplyr)
+library(ggplot2)
+library(tinytex)
+options(scipen = 999) #Used this here to turn off scientific notation
 ```
 
 ## Introduction
 
-A model predicting wheter a penguin is female may provide a probabily, but that still needs to turn into a decision. The threshold to make that decision could change now only how many penguins are classified as female, but also the types of mistakes the model makes. The main question I want to answer is, how does changing the models classification threshold affects its performance, and what tradeoffs come with requiring more or less confidence before classifying a penguin as female? To answer this I plan to first examine the distribution of male and female penguins to establish a baseline of what to expect. I want to compare how accuracy, precision, recall, and f1 score metric change and what those changes mean for the models predicitions. The main question I want to answer is: how does changing the probabilty threshold affect accurany and the types of errors made in the penguin predicitions. 
+A model predicting whether a penguin is female may provide a probably, but that still needs to turn into a decision. The threshold to make that decision could change now only how many penguins are classified as female, but also the types of mistakes the model makes. The main question I want to answer is, how does changing the models classification threshold affects its performance, and what trade offs come with requiring more or less confidence before classifying a penguin as female? To answer this I plan to first examine the distribution of male and female penguins to establish a baseline of what to expect. I want to compare how accuracy, precision, recall, and f1 score metric change and what those changes mean for the models predictions. The main question I want to answer is: how does changing the probability threshold affect accuracy and the types of errors made in the penguin predictions. 
+
+Ill start by looking at the distribution of the actual sex classes and calculating the null error rate as a baseline. From there ill apply the different thresholds of 0.2, 0.5, and 0.8 to .pred_female, build a confusion matrix at each threshold, and compare accuracy, precision, recall, and ff1 score across the three.
+
+## Loading The Packages and Data
+
+Here I am loading the penguin prediction dataset from GitHub. The dataset contains 93 rows and three columns: .pred_female, .pred_class, and sex. The .pred_female column represents the model's predicted probability that a penguin is female, .pred_class represents the predicted class, and sex represents the actual sex of the penguin.
+
+``` {r loading-data}
+df <- read.csv('https://raw.githubusercontent.com/kjeannite/data-607/refs/heads/master/assignment-2b/penguin_predictions.csv') 
+
+glimpse(df)
+```
+
+
+
+The null error rate is the error rate that would result from always predicting the most common class in the dataset. It provides a simple baseline that can be used to determine whether the model is performing better than simply guessing the majority class.
+The formula for the null error rate is:
+
+ $1 - \frac{\text{Majority Class Count}}{\text{Total Count}}$.
+
+``` {r calculating-null}
+
+male <- nrow(filter(df, sex == "male"))       # Count: 54
+female <- nrow(filter(df, sex == "female"))   # Count: 39
+total_count <- nrow(df)                       # Total observations: 93
+
+male / total_count
+female / total_count
+
+
+#Making the bar chart for both sexes
+ggplot(data = df, aes(x = sex, fill = sex)) + geom_bar()
+
+```
+
+The dataset contains 54 male penguins and 39 female penguins, making male the majority class. If we predicted every penguin as male, we would be correct approximately 58% of the time and incorrect approximately 42% of the time. Therefore, the null error rate is approximately 42%.
+
+Since males are the majority class, a model that simply predicted every penguin as male would be correct about 58% of the time. This gives a null accuracy of approximately 58% and a null error rate of approximately 42%. This provides a baseline that the classification model should perform better than. 
+
+## Confusion Matrices
+
+Here we are calculating the True Positives (TP), False Positives (FP), True Negatives (TN), and False Negatives (FN). I am treating female as the positive class because .pred_female represent the model's predicted probability that a penguin is female.
+
+
+```{r confusion Matrix}
+TP <- filter(df, .pred_class == "female" & sex == "female")
+TN <- filter(df, .pred_class == "female" & sex == "male" )
+FP <- filter(df, .pred_class == "male" & sex == "male")
+FN <- filter(df, .pred_class == "male" & sex == "female")
+```
+
+## Confusion Matrices at Multiple Thresholds
+
+When calculating the confusion matrices at different thresholds, a higher threshold makes the model more strict about classifying a penguin as female. For example, at a threshold of 0.2, the model only needs a predicted probability greater than 0.2 to classify a penguin as female. At a threshold of 0.8, the model must be much more confident before making the same classification.
+
+### 0.2 Threshold
+```{r confusion_matrix_02}
+pred_02 <- ifelse(df$.pred_female > 0.2, "female", "male")
+TP_02 <- nrow(filter(df, pred_02 == "female" & sex == "female"))
+FP_02 <- nrow(filter(df, pred_02 == "female" & sex == "male"))
+TN_02 <- nrow(filter(df, pred_02 == "male" & sex == "male"))
+FN_02 <- nrow(filter(df, pred_02 == "male" & sex == "female"))
+
+```
+
+#### Accuracy
+
+Accuracy tells us the proportion of predictions that the model classified correctly.
+
+$\text{Accuracy} = \frac{TP + TN}{TP + TN + FP + FN}$
+
+
+``` {r accuracy_02}
+accuracy_02 <- (TP_02 + TN_02)/(TP_02 + FP_02 + FN_02 + TN_02)
+accuracy_02
+```
+
+
+#### Precision
+
+Precision tells us, out of all the penguins the model predicted as female, what proportion were actually female.
+
+$\text{Precision} = \frac{TP}{TP + FP}$
+
+
+``` {r precision_02}
+precision_02 <- (TP_02)/(TP_02 + FP_02)
+precision_02
+```
+
+#### Recall
+
+Recall tells us, out of all the penguins that were actually female, what proportion the model correctly identified as female.
+
+$\text{Recall} = \frac{\text{TP}}{\text{TP} + \text{FN}}$
+
+```{r recall_02}
+recall_02 <- (TP_02)/(TP_02 + FN_02)
+recall_02
+```
+
+
+#### F1 Score
+
+The F1 score combines precision and recall into a single measure. It is useful when we want to consider both false positives and false negatives rather than focusing only on one type of error.
+
+$F_1 = 2 \cdot \frac{\text{Precision} \cdot \text{Recall}}{\text{Precision} + \text{Recall}}$
+
+```{r f1_score}
+f1_score_02 <- (2 * precision_02 * recall_02)/(precision_02 + recall_02)
+f1_score_02
+```
+
+
+### 0.5 Threshold
+
+```{r confusion_matrix_05}
+pred_05 <- ifelse(df$.pred_female > 0.5, "female", "male")
+TP_05 <- nrow(filter(df, pred_05 == "female" & sex == "female"))
+FP_05 <- nrow(filter(df, pred_05 == "female" & sex == "male"))
+TN_05 <- nrow(filter(df, pred_05 == "male" & sex == "male"))
+FN_05 <- nrow(filter(df, pred_05 == "male" & sex == "female"))
+
+```
+
+#### Accuracy
+
+```{r accuracy_05}
+accuracy_05 <- (TP_05 + TN_05)/(TP_05 + FP_05 + FN_05 + TN_05)
+accuracy_05
+```
+
+#### Precision
+``` {r precision_05}
+precision_05 <- (TP_05)/(TP_05 + FP_05)
+precision_05
+```
+
+
+#### Recall
+
+``` {r recall_05}
+recall_05 <- (TP_05)/(TP_05 + FN_05)
+recall_05
+```
+
+
+#### F1 Score
+
+``` {r f1_score_05}
+f1_score_05 <- (2 * precision_05 * recall_05)/(precision_05 + recall_05)
+f1_score_05
+
+```
+
+### 0.8 Threshold
+
+```{r confusion_matrix_08}
+pred_08 <- ifelse(df$.pred_female > 0.8, "female", "male")
+TP_08 <- nrow(filter(df, pred_08 == "female" & sex == "female"))
+FP_08 <- nrow(filter(df, pred_08 == "female" & sex == "male"))
+TN_08 <- nrow(filter(df, pred_08 == "male" & sex == "male"))
+FN_08 <- nrow(filter(df, pred_08 == "male" & sex == "female"))
+
+```
+
+#### Accuracy
+
+``` {r accuracy_08}
+accuracy_08 <- (TP_08 + TN_08)/(TP_08 + FP_08 + FN_08 + TN_08)
+accuracy_08
+```
+
+
+#### Precision
+
+``` {r precision_08}
+precision_08 <- (TP_08)/(TP_08 + FP_08)
+precision_08
+```
+
+
+#### Recall
+``` {r recall_08}
+recall_08 <- (TP_08)/(TP_08 + FN_08)
+recall_08
+```
+
+#### F1 Score
+``` {r f1_score_08}
+f1_score_08 <- (2 * precision_08 * recall_08)/(precision_08 + recall_08)
+f1_score_08
+```
+
+```{r}
+metrics <- data.frame(
+  Threshold = c(0.2, 0.5, 0.8),
+  Accuracy = c(accuracy_02, accuracy_05, accuracy_08),
+  Precision = c(precision_02, precision_05, precision_08),
+  Recall = c(recall_02, recall_05, recall_08),
+  F1_Score = c(f1_score_02, f1_score_05, f1_score_08)
+)
+
+metrics
+```
+
+## Use Cases for Different Thresholds
+
+### 0.2 Threshold
+
+A real-world scenario where a 0.2 threshold may be useful is advertising. An advertiser may want to reach a wider audience rather than use a very strict classification threshold. Using a lower threshold means more people would be classified as potential customers, even if the model is not highly confident about every individual. This could increase the number of false positives, but it may be acceptable because reaching an extra person has a relatively low cost and there is still a chance that person could convert.
+
+### 0.8 Threshold 
+
+A real-world scenario where a 0.8 threshold may be useful is deciding which customers should receive an expensive retention offer. For example, if a model predicts whether a customer is likely to leave a service, a company may only want to give a large retention bonus to customers who have a high predicted probability of leaving. Since the offer is expensive, the company may prefer a higher threshold so that it only targets customers when the model is relatively confident.

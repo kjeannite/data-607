@@ -359,20 +359,238 @@ display: none;
 
 <div id="introduction" class="section level2">
 <h2>Introduction</h2>
-<p>A model predicting wheter a penguin is female may provide a
-probabily, but that still needs to turn into a decision. The threshold
-to make that decision could change now only how many penguins are
+<p>A model predicting whether a penguin is female may provide a
+probably, but that still needs to turn into a decision. The threshold to
+make that decision could change now only how many penguins are
 classified as female, but also the types of mistakes the model makes.
 The main question I want to answer is, how does changing the models
-classification threshold affects its performance, and what tradeoffs
+classification threshold affects its performance, and what trade offs
 come with requiring more or less confidence before classifying a penguin
 as female? To answer this I plan to first examine the distribution of
 male and female penguins to establish a baseline of what to expect. I
 want to compare how accuracy, precision, recall, and f1 score metric
-change and what those changes mean for the models predicitions. The main
-question I want to answer is: how does changing the probabilty threshold
-affect accurany and the types of errors made in the penguin
-predicitions.</p>
+change and what those changes mean for the models predictions. The main
+question I want to answer is: how does changing the probability
+threshold affect accuracy and the types of errors made in the penguin
+predictions.</p>
+<p>Ill start by looking at the distribution of the actual sex classes
+and calculating the null error rate as a baseline. From there ill apply
+the different thresholds of 0.2, 0.5, and 0.8 to .pred_female, build a
+confusion matrix at each threshold, and compare accuracy, precision,
+recall, and ff1 score across the three.</p>
+</div>
+<div id="loading-the-packages-and-data" class="section level2">
+<h2>Loading The Packages and Data</h2>
+<p>Here I am loading the penguin prediction dataset from GitHub. The
+dataset contains 93 rows and three columns: .pred_female, .pred_class,
+and sex. The .pred_female column represents the model’s predicted
+probability that a penguin is female, .pred_class represents the
+predicted class, and sex represents the actual sex of the penguin.</p>
+<pre class="r"><code>df &lt;- read.csv(&#39;https://raw.githubusercontent.com/kjeannite/data-607/refs/heads/master/assignment-2b/penguin_predictions.csv&#39;) 
+
+glimpse(df)</code></pre>
+<pre><code>## Rows: 93
+## Columns: 3
+## $ .pred_female &lt;dbl&gt; 0.99217462, 0.95423945, 0.98473504, 0.18702056, 0.9947012…
+## $ .pred_class  &lt;chr&gt; &quot;female&quot;, &quot;female&quot;, &quot;female&quot;, &quot;male&quot;, &quot;female&quot;, &quot;female&quot;,…
+## $ sex          &lt;chr&gt; &quot;female&quot;, &quot;female&quot;, &quot;female&quot;, &quot;female&quot;, &quot;female&quot;, &quot;female…</code></pre>
+<p>The null error rate is the error rate that would result from always
+predicting the most common class in the dataset. It provides a simple
+baseline that can be used to determine whether the model is performing
+better than simply guessing the majority class. The formula for the null
+error rate is:</p>
+<p><span class="math inline">\(1 - \frac{\text{Majority Class
+Count}}{\text{Total Count}}\)</span>.</p>
+<pre class="r"><code>male &lt;- nrow(filter(df, sex == &quot;male&quot;))       # Count: 54
+female &lt;- nrow(filter(df, sex == &quot;female&quot;))   # Count: 39
+total_count &lt;- nrow(df)                       # Total observations: 93
+
+male / total_count</code></pre>
+<pre><code>## [1] 0.5806452</code></pre>
+<pre class="r"><code>female / total_count</code></pre>
+<pre><code>## [1] 0.4193548</code></pre>
+<pre class="r"><code>#Making the bar chart for both sexes
+ggplot(data = df, aes(x = sex, fill = sex)) + geom_bar()</code></pre>
+<p><img role="img" aria-label src="data:image/png;base64,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kKjrTRcBEtNRE9AC06jTRYBEXW+6CJCYjpqAFphGnS4CJOp600WAxHTUBLTANOp0ESBR15suAiSmoyagBaZRp4sAibredBEgMR01AS0wjTpdBEjU9aaLAInpqAlogWnU6SJAoq43XQRITEdNQAtMo04XARJ1vekiQGI6agJaYBp1ugiQqOtNFwES01ET0ALTqNNFgERdb7oIkJiOmoAWmEadLgIk6nrTRYDEdNQEtMA06nQRIFHXmy4CJKajJqAFplGniwCJut50ESAxHTUBLTCNOl0ESNT1posAiemoCWiBadTpIkCirjddBEhMR01AC0yjThcBEnW96SJAYjpqAlpgGnW6CJCo600XARLTURPQAtOo00WARF1vugiQmI6agBaYRp0uAiTqetNFgMR01AS0wDTqdBEgUdebLgIkpqMmoAWmUaeLAIm63nQRIDEdNQEtMI06XQRI1PWmiwCJ6agJaIFp1OkiQKKuN10ESExHTUALTKNOFwESdb3pIkBiOmoCWmAadboIkKjrTRcBEtNRE9AC06jTRYBEXW+6CJCYjpqAFphGnS4CJOp600WAxHTUBLTANOp0ESBR15suAiSmoyagBaZRp4sAibredBEgMR01AS0wjTpdBEjU9aaLAInpqAlogWnU6SJAoq43XQRITEdNQAtMo04XARJ1vekiQGI6agJaYBp1ugiQqOtNFwES01ET0ALTqNNFgERdb7oIkJiOmoAWmEadLgIk6nrTRYDEdNQEtMA06nQRIFHXmy4CJKajJqAFplGniwCJut50ESAxHTUBLTCNOl0ESNT1posAiemoCWiBadTpIkCirjddBEhMR01AC0yjThcBEnW96SJAYjpqAlpgGnW6CJCo600XARLTURPQAtOo00WARF1vugiQmI6agBaYRp0uAiTqetNFgMR01AS0wDTqdBEgUdebLgIkpqMmoAWmUaeLAIm63nQRIDEdNQEtMI06XQRI1PWmiwCJ6agJaIFp1OkiQKKuN10ESExHTUALTKNOFwESdb3pIkBiOmoCWmAadboIkKjrTRcBEtNRE9AC06jTRYBEXW+6CJCYjpqAFphGnS4CJOp600WAxHTUBLTANOp0ESBR15suAiSmoyagBaZRp4sAibredBEgMR01AS0wjTpdBEjU9aaLAInpqAlogWnU6SJAoq43XQRITEdNQAtMo04XARJ1vekiQGI6agJaYBp1ugiQqOtNFwES01ET0ALTqNNFgERdb7oIkJiOmoAWmEadLgIk6nrTRYDEdNQEtMA06nQRIFHXmy4CJKajJqAFplGniwCJut50ESAxHTUBLTCNOl0ESNT1posAiemoCWiBadTpIkCirjddBEhMR01AC0yjThcBEnW96SJAYjpqAlpgGnW6CJCo600XARLTURPQAtOo00WARF1vugiQmI6agBaYRp0uAiTqetNFgMR01AS0wDTqdBEgUdebLgIkpqMmoAWmUaeLAIm63nQRIDEdNQEtMI06XQRI1PWmiwCJ6agJaIFp1OkiQKKuN10ESExHTUALTKNOFwESdb3pIkBiOmoCWmAadboIkKjrTRcBEtNRE9AC06jTRYBEXW+6CJCYjpqAFphGnS4CJOp600WAxHTUBLTANOp0ESBR15suAiSmoyagBaZRp4sAibredBEgMR01AS0wjTpdBEjU9aaLAInpqAlogWnU6SJAoq43XQRITEdNQAtMo04XARJ1vekiQGI6agJaYBp1ugiQqOtNFwES01ET0ALTqNNFgERdb7oIkJiOmoAWmEadLgIk6nrTRYDEdNQEtMA06nQRIFHXmy4CJKajJqAFplGniwCJut50ESAxHTUBLTCNOl0ESNT1posAiemoCWiBadTpIkCirjddBEhMR01AC0yjThcBEnW96SJAYjpqAlpgGnW6CJCo600XARLTURPQAtOo00WARF1vugiQmI6agBaYRp0uAiTqetNFgMR01AS0wDTqdBEgUdebLgIkpqMmoAWmUaeLAIm63nQRIDEdNQEtMI06XQRI1PWmiwCJ6agJaIFp1OkiQKKuN10ESExHTUALTKNOFwESdb3pIkBiOmoCWmAadboIkKjrTRcBEtNRE9AC06jTRYBEXW+6CJCYjpqAFphGnS4CJOp600WAxHTUBLTANOp0ESBR15suAiSmoyagBaZRp4sAibredBEgMR01AS0wjTpdBEjU9aaLAInpqAlogWnU6SJAoq43XQRITEdNQAtMo04XARJ1vekiQGI6agJaYBp1ugiQqOtNFwES01ET0ALTqNNFgERdb7oIkJiOmoAWmEadLgIk6nrTRYDEdNQEtMA06nQRIFHXmy4CJKajJqAFplGniwCJut50ESAxHTUBLTCNOl0ESNT1posAiemoCWiBadTpIkCirjddBEhMR01AC0yjThcBEnW96SJAYjpqNaAfvHpzs9l87bULX9/4+i93v76z2Tz+9u4Xb202Txj7VURA4aSuN10ESExHLQb0N5uDL/9q//VbZ18/tfvq9mbz0ulf3r+5+dKv3BH7YgQUTup600WAxHTUWkBP0/j46YPNuz87PMQ87efuwecffjoK+vHzu3LefWV0dDYCCid1vekiQGI6ai2gb509tLy9/8VpT584+wc3/ubk8Nw98wSegMJLXW+6CJCYjloN6L6TD748e6p++qjzifGXL/31JvIEnoDCS11vugiQmI5aC+id3QtGvzj76lDNvdvj9aP3dy8xRZ7AE1B4qetNFwES01GLLyL9dP+K0WPf+/3ui4+f35wzHnbuXlWKPIEnoPBS15suAiSmo1bfxvTbbx1ehX/tswO6ewiaeQBKQGGlrjddBEhMR73gjfT/9OOvjufppwF9+MHm7hX4w5tBpyOgcFLXmy4CJKajXvZJpN37mB5/+7SWD7fy9Bn8dzabpw3R0hFQOKnrTRcBEtNRSwE996rR/n1Mt++/KH9o6e59ov/yysWX6qchoHBS15suAiSmo174NqYRzF0vx0PQO+N3PvdFffB35yKgcFLXmy4CJKaj1gL68fObGy+exvGDw4eN3hqvJo1n9PuM7h6h3s48ie8LqEm6CJCo600XAZKOC/9i432eOyOR9z8Lv+vn+CTnyGzgSTyPQOGkrjddBEhMR62+iHT350/u3gj61O8PX3/w6lfv/3Sm22fvYLrDT2P6LOkiQKKuN10ESExHzc8DLTCNOl0ESNT1posAiemoCWiBadTpIkCirjddBEhMR01AC0yjThcBEnW96SJAYjpqAlpgGnW6CJCo600XARLTURPQAtOo00WARF1vugiQmI6agBaYRp0uAiTqetNFgMR01KsP6N0f/4cHH4t6/9v/fslnpEyjThcBEnW96SJAYjrq1Qf04+fP/Xz8C1/UmUadLgIk6nrTRYDEdNTXK6Dv3ySgKFLXmy4CJKajXnNAL/7A5wcfOZWZRp0uAiTqetNFgMR01GsO6O4jpQ9b9NPyTaNOFwESdb3pIkBiOupVB/Tuf/vOd75988YffefMd3/xGf93X8w06nQRIFHXmy4CJKajXnVAdxa+bnSBadTpIkCirjddBEhMR736gF54G9NCplGniwCJut50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URPQAtOo00WARF1vugiQmI6agBaYRp0uAiTqetNFgMR01AS0wDTqdBEgUdebLgIkpqMmoAWmUaeLAIm63nQRIDEdNQEtMI06XQRI1PWmiwCJ6agJaIFp1OkiQKKuN10ESExHTUALTKNOFwESdb3pIkBiOmoCWmAadboIkKjrTRcBEtNRE9AC06jTRYBEXW+6CJCYjpqAFphGnS4CJOp600WAxHTUBLTANOp0ESBR15suAiSmoyagBaZRp4sAibredBEgMR01AS0wjTpdBEjU9aaLAInpqAlogWnU6SJAoq43XQRITEdNQAtMo04XARJ1vekiQGI6agJaYBp1ugiQqOtNFwES01ET0ALTqNNFgERdb7oIkJiOmoAWmEadLgIk6nrTRYDEdNQEtMA06nQRIFHXmy4CJKajJqAFplGniwCJut50ESAxHTUBLTCNOl0ESNT1posAiemoCWiBadTpIkCirjddBEhMR01AC0yjThcBEnW96SJAYjpqAlpgGnW6CJCo600XARLTUV/3gP7bn2+3z3z/zfHFvZ/c2m7PvjjHNOp0ESBR15suAiSmo77mAf377d4zf7f74pOX919849cPf5dp1OkiQKKuN10ESExHfb0D+t72mb88Ofno9RHNN7bPvrn74tl3H/o206jTRYBEXW+6CJCYjvpaB/Te69sf7f56+tDz9K8f3tpn9JOXx+PRc0yjThcBEnW96SJAYjrqax3QT14+PF1/Y/uDk5N3ts/tv3hn98UFplGniwCJut50ESAxHfW1Duh9+4C+MR6Onj6vf+6hf2wadboIkKjrTRcBEtNRE9CTw7P2e68fnrp/eOvsN0G/cuD4rzuVLgIk6nrTRYDEdNQrsjyg+yfvBBQXqOtNFwES01GvyOKAvrd/G9O5gD78RibTg/10ESBR15suAiSmo+Yp/Ml7t57Z/ebnZzwCPWMadboIkKjrTRcBEtNRE9B3Dm+jJ6C4QF1vugiQmI762gf077dnb/vkVXicp643XQRITEd9zQN6743tN89+w/Ps/Z+8DxQ76nrTRYDEdNTXPKBvnPvcJp9EwnnqetNFgMR01Nc7oO+c/9z7vde33+Sz8DijrjddBEhMR32tA3r48Us7u9/2/IifxoQH1PWmiwCJ6aivdUDf214I6MlHPzn91fcffvxJQK8ndb3pIkBiOuprHdAq06jTRYBEXW+6CJCYjpqAFphGnS4CJOp600WAxHTUBLTANOp0ESBR15suAiSmoyagBaZRp4sAibredBEgMR01AS0wjTpdBEjU9aaLAInpqAlogWnU6SJAoq43XQRITEdNQAtMo04XARJ1vekiQGI6agJaYBp1ugiQqOtNFwES01ET0ALTqNNFgERdb7oIkJiOmoAWmEadLgIk6nrTRYDEdNQEtMA06nQRIFHXmy4CJKajJqAFplGniwCJut50ESAxHTUBLTCNOl0ESNT1posAiemoCWiBadTpIkCirjddBEhMR01AC0yjThcBEnW96SJAYjpqAlpgGnW6CJCo600XARLTURPQAtOo00WARF1vugiQmI6agBaYRp0uAiTqetNFgMR01AS0wDTqdBEgUdebLgIkpqMmoAWmUaeLAIm63nQRIDEdNQEtMI06XQRI1PWmiwCJ6agJaIFp1OkiQKKuN10ESExHTUALTKNOFwESdb3pIkBiOmoCWmAadboIkKjrTRcBEtNRE9AC06jTRYBEXW+6CJCYjpqAFphGnS4CJOp600WAxHTUBLTANOp0ESBR15suAiSmoyagBaZRp4sAibredBEgMR01AS0wjTpdBEjU9aaLAInpqAlogWnU6SJAoq43XQRITEdNQAtMo04XARJ1vekiQGI6agJaYBp1ugiQqOtNFwES01ET0ALTqNNFgERdb7oIkJiOmoAWmEadLgIk6nrTRYDEdNQEtMA06nQRIFHXmy4CJKajJqAFplGniwCJut50ESAxHTUBLTCNOl0ESNT1posAiemoCWiBadTpIkCirjddBEhMR01AC0yjThcBEnW96SJAYjpqAlpgGnW6CJCo600XARLTURPQAtOo00WARF1vugiQmI6agBaYRp0uAiTqetNFgMR01AS0wDTqdBEgUdebLgIkpqMmoAWmUaeLAIm63nQRIDEdNQEtMI06XQRI1PWmiwCJ6agJaIFp1OkiQKKuN10ESExHTUALTKNOFwESdb3pIkBiOmoCWmAadboIkKjrTRcBEtNRE9AC06jTRYBEXW+6CJCYjpqAFphGnS4CJOp600WAxHTUBLTANOp0ESBR15suAiSmoyagBaZRp4sAibredBEgMR01AS0wjTpdBEjU9aaLAInpqAlogWnU6SJAoq43XQRITEdNQAtMo04XARJ1vekiQGI6agJaYBp1ugiQqOtNFwES01ET0ALTqNNFgERdb7oIkJiOmoAWmEadLgIk6nrTRYDEdNQEtMA06nQRIFHXmy4CJKajJqAFplGniwCJut50ESAxHTUBLTCNOl0ESNT1posAiemoCWiBadTpIkCirjddBEhMR01AC0yjThcBEnW96SJAYjpqAlpgGnW6CJCo600XARLTURPQAtOo00WARF1vugiQmI6agBaYRp0uAiTqetNFgMR01AS0wDTqdBEgUdebLgIkpqMmoAWmUaeLAIm63nQRIDEdNQEtMI06XQRI1PWmiwCJ6agJaIFp1OkiQKKuN10ESExHTUALTKNOFwESdb3pIkBiOmoCWmAadboIkKjrTRcBEtNRE9AC06jTRYBEXW+6CJCYjpqAFphGnS4CJOp600WAxHTUBLTANOp0ESBR15suAiSmoyagBaZRp4sAibredBEgMR01AS0wjTpdBEjU9aaLAInpqAlogWnU6SJAoq43XQRITEdNQAtMo04XARJ1vekiQGI6agJaYBp1ugiQqOtNFwES01ET0ALTqNNFgERdb7oIkJiOmoAWmEadLgIk6nrTRYDEdNQEtMA06nQRIFHXmy4CJKajJqAFplGniwCJut50ESAxHTUBLTCNOl0ESNT1posAiemoCWiBadTpIkCirjddBEhMR01AC0yjThcBEnW96SJAYjpqAlpgGnW6CJCo600XARLTURPQAtOo00WARF1vugiQmI6agBaYRp0uAiTqetNFgMR01AS0wDTqdBEgUdebLgIkpqMmoAWmUaeLAIm63nQRIDEdNQEtMI06XQRI1PWmiwCJ6agJaIFp1OkiQKKuN10ESExHTUALTKNOFwESdb3pIkBiOmoCWmAadboIkKjrTRcBEtNRE9AC06jTRYBEXW+6CJCYjpqAFphGnS4CJOp600WAxHTUBLTANOp0ESBR15suAiSmoyagBaZRp4sAibredBEgMR01AS0wjTpdBEjU9aaLAInpqAlogWnU6SJAoq43XQRITEdNQAtMo04XARJ1vekiQGI6agJaYBp1ugiQqOtNFwES01ET0ALTqNNFgERdb7oIkJiOmoAWmEadLgIk6nrTRYDEdNQEtMA06nQRIFHXmy4CJKajJqAFplGniwCJut50ESAxHTUBLTCNOl0ESNT1posAiemoCWiBadTpIkCirjddBEhMR01AC0yjThcBEnW96SJAYjpqAlpgGnW6CJCo600XARLTURPQAtOo00WARF1vugiQmI6agBaYRp0uAiTqetNFgMR01AS0wDTqdBEgUdebLgIkpqMmoAWmUaeLAIm63nQRIDEdNQEtMI06XQRI1PWmiwCJ6agJaIFp1OkiQKKuN10ESExHTUALTKNOFwESdb3pIkBiOmoCWmAadboIkKjrTRcBEtNRE9AC06jTRYBEXW+6CJCYjpqAFphGnS4CJOp600WAxHTUBLTANOp0ESBR15suAiSmoyagBaZRp4sAibredBEgMR01AS0wjTpdBEjU9aaLAInpqAlogWnU6SJAoq43XQRITEdNQAtMo04XARJ1vekiQGI6agJaYBp1ugiQqOtNFwES01ET0ALTqNNFgERdb7oIkJiOmoAWmEadLgIk6nrTRYDEdNQEtMA06nQRIFHXmy4CJKajJqAFplGniwCJut50ESAxHTUBLTCNOl0ESNT1posAiemoCWiBadTpIkCirjddBEhMR01AC0yjThcBEnW96SJAYjpqAjpPugiQqOtNFwGSjgt/tPEIFE7qetNFgMR01DwCLTCNOl0ESNT1posAiemoCWiBadTpIkCirjddBEhMR01AC0yjThcBEnW96SJAYjpqAlpgGnW6CJCo600XARLTURPQAtOo00WARF1vugiQmI6agBaYRp0uAiTqetNFgMR01AS0wDTqdBEgUdebLgIkpqMmoAWmUaeLAIm63nQRIDEdNQEtMI06XQRI1PWmiwCJ6agJaIFp1OkiQKKuN10ESExHTUALTKNOFwESdb3pIkBiOmoCWmAadboIkKjrTRcBEtNRE9AC06jTRYBEXW+6CJCYjpqAFphGnS4CJOp600WAxHTUBLTANOp0ESBR15suAiSmoyagBaZRp4sAibredBEgMR01AS0wjTpdBEjU9aaLAInpqAlogWnU6SJAoq43XQRITEdNQAtMo04XARJ1vekiQGI6agJaYBp1ugiQqOtNFwES01ET0ALTqNNFgERdb7oIkJiOmoAWmEadLgIk6nrTRYDEdNQEtMA06nQRIFHXmy4CJKajJqAFplGniwCJut50ESAxHTUBLTCNOl0ESNT1posAiemoCWiBadTpIkCirjddBEhMR01AC0yjThcBEnW96SJAYjpqAlpgGnW6CJCo600XARLTURPQAtOo00WARF1vugiQmI6agBaYRp0uAiTqetNFgMR01AS0wDTqdBEgUdebLgIkpqMmoAWmUaeLAIm63nQRIDEdNQEtMI06XQRI1PWmiwCJ6agJaIFp1OkiQKKuN10ESExHTUALTKNOFwESdb3pIkBiOmoCWmAadboIkKjrTRcBEtNRE9AC06jTRYBEXW+6CJCYjpqAFphGnS4CJOp600WAxHTUBLTANOp0ESBR15suAiSmoyagBaZRp4sAibredBEgMR01AS0wjTpdBEjU9aaLAInpqAlogWnU6SJAoq43XQRITEdNQAtMo04XARJ1vekiQGI6agJaYBp1ugiQqOtNFwES01ET0ALTqNNFgERdb7oIkJiOmoAWmEadLgIk6nrTRYDEdNQEtMA06nQRIFHXmy4CJKajJqAFplGniwCJut50ESAxHTUBLTCNOl0ESNT1posAiemoCWiBadTpIkCirjddBEhMR01AC0yjThcBEnW96SJAYjpqAlpgGnW6CJCo600XARLTURPQAtOo00WARF1vugiQmI6agBaYRp0uAiTqetNFgMR01AS0wDTqdBEgUdebLgIkpqMmoAWmUaeLAIm63nQRIDEdNQEtMI06XQRI1PWmiwCJ6agJaIFp1OkiQKKuN10ESExHTUALTKNOFwESdb3pIkBiOmoCWmAadboIkKjrTRcBEtNRE9AC06jTRYBEXW+6CJCYjpqAFphGnS4CJOp600WAxHTUBLTANOp0ESBR15suAiSmoyagBaZRp4sAibredBEgMR01AS0wjTpdBEjU9aaLAInpqAlogWnU6SJAoq43XQRITEdNQAtMo04XARJ1vekiQGI6agJaYBp1ugiQqOtNFwES01ET0ALTqNNFgERdb7oIkJiOmoAWmEadLgIk6nrTRYDEdNQEtMA06nQRIFHXmy4CJKajJqAFplGniwCJut50ESAxHTUBLTCNOl0ESNT1posAiemoCWiBadTpIkCirjddBEhMR01AC0yjThcBEnW96SJAYjpqAlpgGnW6CJCo600XARLTURPQAtOo00WARF1vugiQmI6agBaYRp0uAiTqetNFgMR01AS0wDTqdBEgUdebLgIkpqMmoAWmUaeLAIm63nQRIDEdNQEtMI06XQRI1PWmiwCJ6agJaIFp1OkiQKKuN10ESExHTUALTKNOFwESdb3pIkBiOmoCWmAadboIkKjrTRcBEtNRE9AC06jTRYBEXW+6CJCYjpqAFphGnS4CJOp600WAxHTUBLTANOp0ESBR15suAiSmoyagBaZRp4sAibredBEgMR01AS0wjTpdBEjU9aaLAInpqAlogWnU6SJAoq43XQRITEdNQAtMo04XARJ1vekiQGI6agJaYBp1ugiQqOtNFwES01ET0ALTqNNFgERdb7oIkJiOmoAWmEadLgIk6nrTRYDEdNQEtMA06nQRIFHXmy4CJKajJqAFplGniwCJut50ESAxHTUBLTCNOl0ESNT1posAiemoCWiBadTpIkCirjddBEhMR01AC0yjThcBEnW96SJAYjpqAlpgGnW6CJCo600XARLTURPQAtOo00WARF1vugiQmI6agBaYRp0uAiTqetNFgMR01AS0wDTqdBEgUdebLgIkpqMmoAWmUaeLAIm63nQRIDEdNQEtMI06XQRI1PWmiwCJ6agJaIFp1OkiQKKuN10ESExHTUALTKNOFwESdb3pIkBiOmoCWmAadboIkKjrTRcBEtNRE9AC06jTRYBEXW+6CJCYjpqAFphGnS4CJOp600WAxHTUBLTANOp0ESBR15suAiSmoyagBaZRp4sAibredBEgMR01AS0wjTpdBEjU9aaLAInpqAlogWnU6SJAoq43XQRITEdNQAtMo04XARJ1vekiQGI6agJaYBp1ugiQqOtNFwES01ET0ALTqNNFgERdb7oIkJiOmoAWmEadLgIk6nrTRYDEdNQEtMA06nQRIFHXmy4CJKajJqAFplGniwCJut50ESAxHTUBLTCNOl0ESNT1posAiemoCWiBadTpIkCirjddBEhMR01AC0yjThcBEnW96SJAYjpqAlpgGnW6CJCo600XARLTURPQAtOo00WARF1vugiQmI6agBaYRp0uAiTqetNFgMR01AS0wDTqdBEgUdebLgIkpqMmoAWmUaeLAIm63nQRIDEdNQEtMI06XQRI1PWmiwCJ6agJaIFp1OkiQKKuN10ESExHTUALTKNOFwESdb3pIkBiOmoCWmAadboIkKjrTRcBEtNRE9AC06jTRYBEXW+6CJCYjpqAFphGnS4CJOp600WAxHTUBLTANOp0ESBR15suAiSmoyag59z7ya3t9vtvfurvm0adLgIk6nrTRYDEdNQE9IFPXt7ufOPXD/8D06jTRYBEXW+6CJCYjpqAPvDG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" alt width="672" /></p>
+<p>The dataset contains 54 male penguins and 39 female penguins, making
+male the majority class. If we predicted every penguin as male, we would
+be correct approximately 58% of the time and incorrect approximately 42%
+of the time. Therefore, the null error rate is approximately 42%.</p>
+<p>Since males are the majority class, a model that simply predicted
+every penguin as male would be correct about 58% of the time. This gives
+a null accuracy of approximately 58% and a null error rate of
+approximately 42%. This provides a baseline that the classification
+model should perform better than.</p>
+</div>
+<div id="confusion-matrices" class="section level2">
+<h2>Confusion Matrices</h2>
+<p>Here we are calculating the True Positives (TP), False Positives
+(FP), True Negatives (TN), and False Negatives (FN). I am treating
+female as the positive class because .pred_female represent the model’s
+predicted probability that a penguin is female.</p>
+<pre class="r"><code>TP &lt;- filter(df, .pred_class == &quot;female&quot; &amp; sex == &quot;female&quot;)
+TN &lt;- filter(df, .pred_class == &quot;female&quot; &amp; sex == &quot;male&quot; )
+FP &lt;- filter(df, .pred_class == &quot;male&quot; &amp; sex == &quot;male&quot;)
+FN &lt;- filter(df, .pred_class == &quot;male&quot; &amp; sex == &quot;female&quot;)</code></pre>
+</div>
+<div id="confusion-matrices-at-multiple-thresholds" class="section level2">
+<h2>Confusion Matrices at Multiple Thresholds</h2>
+<p>When calculating the confusion matrices at different thresholds, a
+higher threshold makes the model more strict about classifying a penguin
+as female. For example, at a threshold of 0.2, the model only needs a
+predicted probability greater than 0.2 to classify a penguin as female.
+At a threshold of 0.8, the model must be much more confident before
+making the same classification.</p>
+<div id="threshold" class="section level3">
+<h3>0.2 Threshold</h3>
+<pre class="r"><code>pred_02 &lt;- ifelse(df$.pred_female &gt; 0.2, &quot;female&quot;, &quot;male&quot;)
+TP_02 &lt;- nrow(filter(df, pred_02 == &quot;female&quot; &amp; sex == &quot;female&quot;))
+FP_02 &lt;- nrow(filter(df, pred_02 == &quot;female&quot; &amp; sex == &quot;male&quot;))
+TN_02 &lt;- nrow(filter(df, pred_02 == &quot;male&quot; &amp; sex == &quot;male&quot;))
+FN_02 &lt;- nrow(filter(df, pred_02 == &quot;male&quot; &amp; sex == &quot;female&quot;))</code></pre>
+<div id="accuracy" class="section level4">
+<h4>Accuracy</h4>
+<p>Accuracy tells us the proportion of predictions that the model
+classified correctly.</p>
+<p><span class="math inline">\(\text{Accuracy} = \frac{TP + TN}{TP + TN
++ FP + FN}\)</span></p>
+<pre class="r"><code>accuracy_02 &lt;- (TP_02 + TN_02)/(TP_02 + FP_02 + FN_02 + TN_02)
+accuracy_02</code></pre>
+<pre><code>## [1] 0.9139785</code></pre>
+</div>
+<div id="precision" class="section level4">
+<h4>Precision</h4>
+<p>Precision tells us, out of all the penguins the model predicted as
+female, what proportion were actually female.</p>
+<p><span class="math inline">\(\text{Precision} = \frac{TP}{TP +
+FP}\)</span></p>
+<pre class="r"><code>precision_02 &lt;- (TP_02)/(TP_02 + FP_02)
+precision_02</code></pre>
+<pre><code>## [1] 0.8604651</code></pre>
+</div>
+<div id="recall" class="section level4">
+<h4>Recall</h4>
+<p>Recall tells us, out of all the penguins that were actually female,
+what proportion the model correctly identified as female.</p>
+<p><span class="math inline">\(\text{Recall} =
+\frac{\text{TP}}{\text{TP} + \text{FN}}\)</span></p>
+<pre class="r"><code>recall_02 &lt;- (TP_02)/(TP_02 + FN_02)
+recall_02</code></pre>
+<pre><code>## [1] 0.9487179</code></pre>
+</div>
+<div id="f1-score" class="section level4">
+<h4>F1 Score</h4>
+<p>The F1 score combines precision and recall into a single measure. It
+is useful when we want to consider both false positives and false
+negatives rather than focusing only on one type of error.</p>
+<p><span class="math inline">\(F_1 = 2 \cdot \frac{\text{Precision}
+\cdot \text{Recall}}{\text{Precision} + \text{Recall}}\)</span></p>
+<pre class="r"><code>f1_score_02 &lt;- (2 * precision_02 * recall_02)/(precision_02 + recall_02)
+f1_score_02</code></pre>
+<pre><code>## [1] 0.902439</code></pre>
+</div>
+</div>
+<div id="threshold-1" class="section level3">
+<h3>0.5 Threshold</h3>
+<pre class="r"><code>pred_05 &lt;- ifelse(df$.pred_female &gt; 0.5, &quot;female&quot;, &quot;male&quot;)
+TP_05 &lt;- nrow(filter(df, pred_05 == &quot;female&quot; &amp; sex == &quot;female&quot;))
+FP_05 &lt;- nrow(filter(df, pred_05 == &quot;female&quot; &amp; sex == &quot;male&quot;))
+TN_05 &lt;- nrow(filter(df, pred_05 == &quot;male&quot; &amp; sex == &quot;male&quot;))
+FN_05 &lt;- nrow(filter(df, pred_05 == &quot;male&quot; &amp; sex == &quot;female&quot;))</code></pre>
+<div id="accuracy-1" class="section level4">
+<h4>Accuracy</h4>
+<pre class="r"><code>accuracy_05 &lt;- (TP_05 + TN_05)/(TP_05 + FP_05 + FN_05 + TN_05)
+accuracy_05</code></pre>
+<pre><code>## [1] 0.9354839</code></pre>
+</div>
+<div id="precision-1" class="section level4">
+<h4>Precision</h4>
+<pre class="r"><code>precision_05 &lt;- (TP_05)/(TP_05 + FP_05)
+precision_05</code></pre>
+<pre><code>## [1] 0.9230769</code></pre>
+</div>
+<div id="recall-1" class="section level4">
+<h4>Recall</h4>
+<pre class="r"><code>recall_05 &lt;- (TP_05)/(TP_05 + FN_05)
+recall_05</code></pre>
+<pre><code>## [1] 0.9230769</code></pre>
+</div>
+<div id="f1-score-1" class="section level4">
+<h4>F1 Score</h4>
+<pre class="r"><code>f1_score_05 &lt;- (2 * precision_05 * recall_05)/(precision_05 + recall_05)
+f1_score_05</code></pre>
+<pre><code>## [1] 0.9230769</code></pre>
+</div>
+</div>
+<div id="threshold-2" class="section level3">
+<h3>0.8 Threshold</h3>
+<pre class="r"><code>pred_08 &lt;- ifelse(df$.pred_female &gt; 0.8, &quot;female&quot;, &quot;male&quot;)
+TP_08 &lt;- nrow(filter(df, pred_08 == &quot;female&quot; &amp; sex == &quot;female&quot;))
+FP_08 &lt;- nrow(filter(df, pred_08 == &quot;female&quot; &amp; sex == &quot;male&quot;))
+TN_08 &lt;- nrow(filter(df, pred_08 == &quot;male&quot; &amp; sex == &quot;male&quot;))
+FN_08 &lt;- nrow(filter(df, pred_08 == &quot;male&quot; &amp; sex == &quot;female&quot;))</code></pre>
+<div id="accuracy-2" class="section level4">
+<h4>Accuracy</h4>
+<pre class="r"><code>accuracy_08 &lt;- (TP_08 + TN_08)/(TP_08 + FP_08 + FN_08 + TN_08)
+accuracy_08</code></pre>
+<pre><code>## [1] 0.9462366</code></pre>
+</div>
+<div id="precision-2" class="section level4">
+<h4>Precision</h4>
+<pre class="r"><code>precision_08 &lt;- (TP_08)/(TP_08 + FP_08)
+precision_08</code></pre>
+<pre><code>## [1] 0.9473684</code></pre>
+</div>
+<div id="recall-2" class="section level4">
+<h4>Recall</h4>
+<pre class="r"><code>recall_08 &lt;- (TP_08)/(TP_08 + FN_08)
+recall_08</code></pre>
+<pre><code>## [1] 0.9230769</code></pre>
+</div>
+<div id="f1-score-2" class="section level4">
+<h4>F1 Score</h4>
+<pre class="r"><code>f1_score_08 &lt;- (2 * precision_08 * recall_08)/(precision_08 + recall_08)
+f1_score_08</code></pre>
+<pre><code>## [1] 0.9350649</code></pre>
+<pre class="r"><code>metrics &lt;- data.frame(
+  Threshold = c(0.2, 0.5, 0.8),
+  Accuracy = c(accuracy_02, accuracy_05, accuracy_08),
+  Precision = c(precision_02, precision_05, precision_08),
+  Recall = c(recall_02, recall_05, recall_08),
+  F1_Score = c(f1_score_02, f1_score_05, f1_score_08)
+)
+
+metrics</code></pre>
+<pre><code>##   Threshold  Accuracy Precision    Recall  F1_Score
+## 1       0.2 0.9139785 0.8604651 0.9487179 0.9024390
+## 2       0.5 0.9354839 0.9230769 0.9230769 0.9230769
+## 3       0.8 0.9462366 0.9473684 0.9230769 0.9350649</code></pre>
+</div>
+</div>
+</div>
+<div id="use-cases-for-different-thresholds" class="section level2">
+<h2>Use Cases for Different Thresholds</h2>
+<div id="threshold-3" class="section level3">
+<h3>0.2 Threshold</h3>
+<p>A real-world scenario where a 0.2 threshold may be useful is
+advertising. An advertiser may want to reach a wider audience rather
+than use a very strict classification threshold. Using a lower threshold
+means more people would be classified as potential customers, even if
+the model is not highly confident about every individual. This could
+increase the number of false positives, but it may be acceptable because
+reaching an extra person has a relatively low cost and there is still a
+chance that person could convert.</p>
+</div>
+<div id="threshold-4" class="section level3">
+<h3>0.8 Threshold</h3>
+<p>A real-world scenario where a 0.8 threshold may be useful is deciding
+which customers should receive an expensive retention offer. For
+example, if a model predicts whether a customer is likely to leave a
+service, a company may only want to give a large retention bonus to
+customers who have a high predicted probability of leaving. Since the
+offer is expensive, the company may prefer a higher threshold so that it
+only targets customers when the model is relatively confident.</p>
+</div>
 </div>
 
 

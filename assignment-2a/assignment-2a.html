@@ -357,8 +357,8 @@ display: none;
 </div>
 
 
-<div id="introduction" class="section level2">
-<h2>Introduction</h2>
+<div id="introduction" class="section level1">
+<h1>Introduction</h1>
 <p>Not every movie appeals to every viewer. By asking respondents to
 rate each movie on a scale from 1 (terrible) to 5 (amazing), I can
 identify which of six recent releases are best received within my
@@ -378,6 +378,184 @@ movies don’t distort the results. I will also report the number of
 respondents who rated each movie, since an average based on a small
 number of ratings carries less weight than one based on a large
 number.</p>
+</div>
+<div id="data-collection" class="section level1">
+<h1>Data Collection</h1>
+<p>I collected the data using a Google Form that I shared with a group
+of friends. Each respondent was asked to rate six recent movies on a
+scale from 1 to 5, where 1 represented a very negative opinion and 5
+represented a very positive opinion. Respondents also had the option to
+indicate that they had not seen a movie rather than being forced to
+provide a rating.</p>
+<p>In total, I collected 10 responses. Because not every respondent had
+seen every movie, some movies received fewer ratings than others. I
+treated these unanswered movie ratings as missing data rather than
+assigning them a score, since not seeing a movie does not reflect a
+positive or negative opinion of it.</p>
+<div id="table-creation-and-loading-the-data" class="section level2">
+<h2>Table Creation and Loading the Data</h2>
+<p>Below I am creating the three tables users, movies, and ratings, The
+survey was anonymized on Google forms so I did not get any of the
+individuals names. I exported the data via .csv and manually put the
+data into the database.</p>
+<pre class="sql"><code>CREATE TABLE users (
+    user_id SERIAL PRIMARY KEY,
+    response_timestamp TEXT
+);</code></pre>
+<pre class="sql"><code>CREATE TABLE movies (
+    movie_id SERIAL PRIMARY KEY,
+    title TEXT NOT NULL UNIQUE
+);</code></pre>
+<pre class="sql"><code>CREATE TABLE ratings (
+    user_id  INT REFERENCES users(user_id),
+    movie_id INT REFERENCES movies(movie_id),
+    rating   SMALLINT CHECK (rating BETWEEN 1 AND 5),
+    PRIMARY KEY (user_id, movie_id)
+);</code></pre>
+<p>I manually inserted the user_ids, movie_ids, and ratings here from
+the survey responses.</p>
+<pre class="sql"><code>INSERT INTO ratings (user_id, movie_id, rating) VALUES
+(1,1,5),(1,2,4),(1,4,5),(1,5,4),(1,6,5),
+(2,1,5),(2,3,3),(2,4,4),(2,6,5),
+(3,1,5),(3,2,5),(3,4,3),(3,6,5),
+(4,1,4),(4,2,5),(4,5,4),(4,6,5),
+(5,1,3),(5,2,3),(5,5,1),(5,6,5),
+(6,1,4),(6,2,3),(6,4,3),(6,6,5),
+(7,5,4),(7,6,5),
+(8,1,4),(8,2,5),(8,6,5),
+(9,1,3),(9,2,3),(9,6,4),
+(10,1,5),(10,2,5),(10,4,5),(10,5,3),(10,6,5);</code></pre>
+<div id="loading-the-data" class="section level3">
+<h3>Loading the data</h3>
+<p>I used a CROSS JOIN here to take every user and pair them with every
+movie in the survey. Since there were 10 respondents and 6 movies, this
+creates all 60 possible user-movie combinations. I then used a LEFT JOIN
+to bring in the actual rating when one existed. If a respondent did not
+rate a movie, there is no matching row in the ratings table, so the
+rating appears as NA when the data is loaded into R. This allows me to
+keep track of missing ratings without treating an unseen movie as a
+score of 0.</p>
+<pre class="r"><code>movie_ratings &lt;- dbGetQuery(con, &quot;
+SELECT
+    u.user_id,
+    m.title,
+    r.rating
+FROM users u
+CROSS JOIN movies m
+LEFT JOIN ratings r
+    ON u.user_id = r.user_id
+    AND m.movie_id = r.movie_id
+ORDER BY u.user_id, m.movie_id;
+&quot;)
+
+movie_ratings</code></pre>
+<pre><code>##    user_id                     title rating
+## 1        1 Spider-Man: Brand New Day      5
+## 2        1               The Odyssey      4
+## 3        1                The Invite     NA
+## 4        1                 The Drama      5
+## 5        1                 Backrooms      4
+## 6        1                 Obsession      5
+## 7        2 Spider-Man: Brand New Day      5
+## 8        2               The Odyssey     NA
+## 9        2                The Invite      3
+## 10       2                 The Drama      4
+## 11       2                 Backrooms     NA
+## 12       2                 Obsession      5
+## 13       3 Spider-Man: Brand New Day      5
+## 14       3               The Odyssey      5
+## 15       3                The Invite     NA
+## 16       3                 The Drama      3
+## 17       3                 Backrooms     NA
+## 18       3                 Obsession      5
+## 19       4 Spider-Man: Brand New Day      4
+## 20       4               The Odyssey      5
+## 21       4                The Invite     NA
+## 22       4                 The Drama     NA
+## 23       4                 Backrooms      4
+## 24       4                 Obsession      5
+## 25       5 Spider-Man: Brand New Day      3
+## 26       5               The Odyssey      3
+## 27       5                The Invite     NA
+## 28       5                 The Drama     NA
+## 29       5                 Backrooms      1
+## 30       5                 Obsession      5
+## 31       6 Spider-Man: Brand New Day      4
+## 32       6               The Odyssey      3
+## 33       6                The Invite     NA
+## 34       6                 The Drama      3
+## 35       6                 Backrooms     NA
+## 36       6                 Obsession      5
+## 37       7 Spider-Man: Brand New Day     NA
+## 38       7               The Odyssey     NA
+## 39       7                The Invite     NA
+## 40       7                 The Drama     NA
+## 41       7                 Backrooms      4
+## 42       7                 Obsession      5
+## 43       8 Spider-Man: Brand New Day      4
+## 44       8               The Odyssey      5
+## 45       8                The Invite     NA
+## 46       8                 The Drama     NA
+## 47       8                 Backrooms     NA
+## 48       8                 Obsession      5
+## 49       9 Spider-Man: Brand New Day      3
+## 50       9               The Odyssey      3
+## 51       9                The Invite     NA
+## 52       9                 The Drama     NA
+## 53       9                 Backrooms     NA
+## 54       9                 Obsession      4
+## 55      10 Spider-Man: Brand New Day      5
+## 56      10               The Odyssey      5
+## 57      10                The Invite     NA
+## 58      10                 The Drama      5
+## 59      10                 Backrooms      3
+## 60      10                 Obsession      5</code></pre>
+<div id="movie-summary" class="section level4">
+<h4>Movie Summary</h4>
+<p>To compare the six movies, I calculated the average rating, numbers
+of responses, standard deviation, and missing ratings. With the chart
+below you can tell that Obsession was a clear standout with an average
+rating of 4.9 and The Invite was the least liked. Backrooms received the
+highest standard deviation among hte movies with multiple responses at
+1.30. This indicated that it is widely varied between the
+respondents.</p>
+<pre class="r"><code>movie_summary &lt;- movie_ratings %&gt;%
+  group_by(title) %&gt;%
+  summarise(
+    number_of_ratings = sum(!is.na(rating)),
+    average_rating = mean(rating, na.rm = TRUE),
+    standard_deviation = sd(rating, na.rm = TRUE),
+    missing_ratings = sum(is.na(rating))
+  ) %&gt;%
+  arrange(desc(average_rating))
+
+movie_summary</code></pre>
+<pre><code>## # A tibble: 6 × 5
+##   title      number_of_ratings average_rating standard_deviation missing_ratings
+##   &lt;chr&gt;                  &lt;int&gt;          &lt;dbl&gt;              &lt;dbl&gt;           &lt;int&gt;
+## 1 Obsession                 10           4.9               0.316               0
+## 2 Spider-Ma…                 9           4.22              0.833               1
+## 3 The Odyss…                 8           4.12              0.991               2
+## 4 The Drama                  5           4                 1                   5
+## 5 Backrooms                  5           3.2               1.30                5
+## 6 The Invite                 1           3                NA                   9</code></pre>
+</div>
+</div>
+</div>
+</div>
+<div id="conclusion" class="section level1">
+<h1>Conclusion</h1>
+<p>This was an interesting and enjoyable assignment because it allowed
+me to use data collected from my friends to see which movies they liked,
+disliked, or had not seen. By looking at the average ratings, number of
+responses, and variation in the ratings, I was able to compare how each
+movie was received within my sample.</p>
+<p>One thing I struggled with during the assignment was understanding
+why my SQL code blocks kept throwing errors in the R Markdown document.
+I eventually realized that I needed to add connection=con to the SQL
+code chunk headers so that each query could connect to the PostgreSQL
+database. Once I fixed that, I was able to run the SQL queries directly
+in the document and use the results in R for my analysis.</p>
 </div>
 
 
