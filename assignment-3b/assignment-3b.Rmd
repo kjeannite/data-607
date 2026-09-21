@@ -1,0 +1,120 @@
+---
+title: "Assignment 3b: Window Functions"
+author: "Kenny Jeannite"
+date: "2026-09-20"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+library(dplyr)
+library(ggplot2)
+options(scipen = 999)
+```
+
+## Introduction
+
+For this assignment, I am using Steam player data to compare Dota 2 and Counter-Strike: Global Offensive during 2019. The main question I want to answer is: how does each game's recent player activity compare with its average since the beginning of the year?
+
+I will use window functions in dplyr to calculate the year-to-date average and the six-day moving average for each game. I will then use a line chart to compare the six-day averages for both games.
+
+## Loading the Data
+
+The data comes from the [Steam Games Dataset on Mendeley Data](https://data.mendeley.com/datasets/ycy3sy3vj2/1) in 2020. The original files contain player counts recorded every five minutes.
+
+Here I am loading that CSV and putting the dates in order for each game. The dataset contains 365 days for each game, from January 1 through December 31, 2019. The daily average represents how many people were playing at the same time, rather than the total number of different people who played that day.
+
+```{r loading-data}
+daily_players <- read.csv("steam_daily_2019.csv") %>%
+  select(game, date, daily_avg_players) %>%
+  mutate(date = as.Date(date), year = format(date, "%Y")) %>%
+  arrange(game, date)
+
+head(daily_players)
+```
+
+## Year-to-Date Average
+
+Here I am using `cummean()` to calculate the average from January 1 through each date. Grouping by game and year keeps the games separate and starts the calculation over for each year.
+
+```{r year-to-date}
+player_averages <- daily_players %>%
+  group_by(game, year) %>%
+  mutate(ytd_avg = cummean(daily_avg_players)) %>%
+  ungroup()
+
+head(player_averages)
+```
+
+## Six-Day Moving Average
+
+Next I am calculating the average for the current day and the previous five days. The `lag()` function lets me use the values from those earlier days. I add the six values together and divide by six, keeping the calculation separate for each game.
+
+There are no missing dates in the daily dataset, so six rows represent six calendar days. The first five results are `NA` because there are not yet six days available to average.
+
+```{r moving-average}
+player_averages <- player_averages %>%
+  group_by(game) %>%
+  arrange(date, .by_group = TRUE) %>%
+  mutate(moving_avg_6 = (
+    daily_avg_players +
+      lag(daily_avg_players, 1) +
+      lag(daily_avg_players, 2) +
+      lag(daily_avg_players, 3) +
+      lag(daily_avg_players, 4) +
+      lag(daily_avg_players, 5)
+  ) / 6) %>%
+  ungroup()
+
+player_averages %>%
+  group_by(game) %>%
+  slice_head(n = 7) %>%
+  knitr::kable(digits = 2)
+```
+
+### Checking the Moving Average
+
+Here I am checking the first six-day average for Dota 2. The average of the first six daily values should match the moving average on January 6.
+
+```{r checking-average}
+player_averages %>%
+  filter(game == "Dota 2") %>%
+  slice(1:6) %>%
+  summarise(
+    manual_average = mean(daily_avg_players),
+    moving_average = last(moving_avg_6)
+  )
+```
+
+## Comparing the Player Counts
+
+Below I am graphing the six-day moving average for both games. Each colored line represents one game, making it easier to compare their player counts over time.
+
+```{r player-count-graph, fig.width=9, fig.height=6}
+ggplot(player_averages,
+       aes(x = date, y = moving_avg_6, color = game)) +
+  geom_line(na.rm = TRUE) +
+  labs(
+    title = "Six-Day Average Player Counts",
+    x = "Date",
+    y = "Average Players",
+    color = "Game"
+  )
+```
+
+The six-day average smooths some of the daily changes in player counts. A higher line means that game had more concurrent players on average over the most recent six days.
+
+Here I am looking at the final day of the year to compare the results for both games.
+
+```{r final-results}
+player_averages %>%
+  filter(date == as.Date("2019-12-31")) %>%
+  select(game, ytd_avg, moving_avg_6) %>%
+  knitr::kable(digits = 2)
+```
+
+## Conclusion
+
+Dota 2 had the higher average for the full year, at about 478,072 concurrent players compared with 398,660 for Counter-Strike: Global Offensive. However, Counter-Strike had the higher average over the final six days. This shows why looking at recent activity can give a different picture than looking at the whole year.
+
+This assignment helped me see how window functions can summarize changes over time while keeping each game separate. One limitation is that some five-minute readings were missing. I left those out when calculating the daily averages and kept recorded zeros, so the results still depend on the quality of the original data.

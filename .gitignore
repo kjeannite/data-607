@@ -2,6 +2,10 @@
 .Rhistory
 .RData
 .Ruserdata
+.DS_Store
+
+# Large source archive; retain locally to rebuild the daily Steam dataset.
+/assignment-3b/PlayerCountHistoryPart1.zip
 
 # Raw dataset - committed as gzipped openpowerlifting.csv.gz
 openpowerlifting.csv

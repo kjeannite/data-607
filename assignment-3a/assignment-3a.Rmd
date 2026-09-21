@@ -1,0 +1,131 @@
+---
+title: "assignment-3a"
+author: "Kenny Jeannite"
+date: "2026-09-20"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+library(dplyr)
+library(tidyr)
+```
+
+# Introduction
+
+In assignment 2a, I collected movie ratings from 10 friends to see which of six movies were the most well-liked. For this assignment, I am using the same responses to recommend a movie that each person has not rated. The main question I want to answer is: based on the ratings I collected, which of the remaining movies would be the best recommendation for each respondent?
+
+I am using a Global Baseline Estimate to calculate the predicted ratings. This starts with the overall average, then adjusts for how each person rates movies and how each movie compares to the overall average. Missing ratings will stay as NA because not watching a movie does not mean someone disliked it.
+
+# Loading the Data
+
+Here I am importing my survey from a CSV file. It now has 11 responses, including one new response since assignment 2a. I am treating blank answers and movies people did not see as NA. I also added a user ID and changed the data so each row contains one person's rating for one movie.
+
+```{r loading-data}
+# Replace this path with the raw GitHub CSV URL when it is uploaded.
+data_source <- "Movie Survey.csv"
+
+survey <- read.csv(data_source, check.names = FALSE,
+                   na.strings = c("", "NA", "Did not see", "Did not saee"))
+
+movie_ratings <- survey %>%
+  mutate(user_id = row_number()) %>%
+  select(-Timestamp) %>%
+  pivot_longer(cols = -user_id, names_to = "title", values_to = "rating")
+
+head(movie_ratings)
+```
+
+There are `r nrow(movie_ratings)` possible user-movie combinations, with `r sum(!is.na(movie_ratings$rating))` recorded ratings and `r sum(is.na(movie_ratings$rating))` missing ratings. I am only using the recorded ratings to calculate the averages.
+
+# Global Baseline Estimate
+
+I am following the method in the supplied spreadsheet:
+
+**Predicted rating = global average + user bias + movie bias**
+
+The user bias is the person's average minus the global average. The movie bias is the movie's average minus the global average. These adjustments account for people who give higher or lower ratings and movies that are more or less popular.
+
+## Calculating the Global Average
+
+Here I am calculating the average across all `r sum(!is.na(movie_ratings$rating))` recorded ratings. I am using the original ratings rather than averaging the six movie averages, since the movies have different numbers of responses.
+
+```{r global-average}
+global_average <- mean(movie_ratings$rating, na.rm = TRUE)
+global_average
+```
+
+The global average is `r round(global_average, 3)`. This is the starting point for each prediction.
+
+## Calculating the User Bias
+
+Next I am calculating each respondent's average and subtracting the global average. This accounts for some people generally giving higher or lower ratings than others.
+
+```{r user-bias}
+user_summary <- movie_ratings %>%
+  group_by(user_id) %>%
+  summarise(
+    user_average = mean(rating, na.rm = TRUE),
+    user_bias = user_average - global_average
+  )
+
+user_summary
+```
+
+## Calculating the Movie Bias
+
+I am doing the same calculation for each movie. I also included the number of ratings because an average based on one response gives me less information than an average based on several responses.
+
+```{r movie-bias}
+movie_summary <- movie_ratings %>%
+  group_by(title) %>%
+  summarise(
+    number_of_ratings = sum(!is.na(rating)),
+    movie_average = mean(rating, na.rm = TRUE),
+    movie_bias = movie_average - global_average
+  ) %>%
+  arrange(desc(movie_average))
+
+movie_summary
+```
+
+Obsession has the highest average at `r round(movie_summary$movie_average[movie_summary$title == "Obsession"], 2)`, followed by Spider-Man: Brand New Day at approximately `r round(movie_summary$movie_average[movie_summary$title == "Spider-Man: Brand New Day"], 2)`. The Invite has an average of 3, but only one person rated it, so I would be careful about treating that score as a strong indication of how other people would feel about it.
+
+# Predicting the Missing Ratings
+
+Here I am combining the averages and using the formula to predict ratings for movies each person has not seen.
+
+```{r predicted-ratings}
+predicted_ratings <- movie_ratings %>%
+  filter(is.na(rating)) %>%
+  left_join(user_summary, by = "user_id") %>%
+  left_join(movie_summary, by = "title") %>%
+  mutate(predicted_rating = global_average + user_bias + movie_bias) %>%
+  select(user_id, title, predicted_rating) %>%
+  arrange(user_id, desc(predicted_rating), title)
+
+predicted_ratings
+```
+
+# Movie Recommendations
+
+Below I am choosing the movie with the highest predicted rating for each person. The predictions are already sorted from highest to lowest, so I keep the first movie for each user. Ties are ordered alphabetically.
+
+```{r recommendations}
+recommendations <- predicted_ratings %>%
+  group_by(user_id) %>%
+  slice_head(n = 1) %>%
+  ungroup()
+
+recommendations
+```
+
+The Drama is recommended to Users 4, 5, 8, and 9. The Odyssey is recommended to Users 2 and 11, and Spider-Man: Brand New Day is recommended to User 7. Users 3 and 6 receive Backrooms. Users 1 and 10 receive The Invite because it is the only movie they have not rated. Being the highest remaining option does not necessarily mean a movie has a high predicted rating.
+
+Although Obsession had the highest average in assignment 2a, everyone in the survey already rated it. This is why it does not appear in the recommendations.
+
+# Conclusion
+
+This assignment allowed me to take the movie ratings from my friends and use them to make recommendations. By calculating the global average, user bias, and movie bias, I was able to estimate the missing ratings and choose one movie for each respondent.
+
+One limitation is that the survey only contains 11 people, and some movies have very few ratings. The Invite only has one recorded rating, which makes its estimate especially uncertain. The user bias changes the scores but not the movie ranking, so this model does not capture individual preferences such as favorite genres. These recommendations provide a starting point, but I would need more responses and new ratings to determine how well the predictions match what people actually enjoy.
