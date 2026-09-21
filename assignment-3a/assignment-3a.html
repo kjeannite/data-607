@@ -379,7 +379,7 @@ blank answers and movies people did not see as NA. I also added a user
 ID and changed the data so each row contains one person’s rating for one
 movie.</p>
 <pre class="r"><code># Replace this path with the raw GitHub CSV URL when it is uploaded.
-data_source &lt;- &quot;Movie Survey.csv&quot;
+data_source &lt;- &quot;https://raw.githubusercontent.com/kjeannite/data-607/refs/heads/master/assignment-3a/Movie%20Survey.csv&quot;
 
 survey &lt;- read.csv(data_source, check.names = FALSE,
                    na.strings = c(&quot;&quot;, &quot;NA&quot;, &quot;Did not see&quot;, &quot;Did not saee&quot;))

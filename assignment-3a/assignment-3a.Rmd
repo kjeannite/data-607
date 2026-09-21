@@ -23,7 +23,7 @@ Here I am importing my survey from a CSV file. It now has 11 responses, includin
 
 ```{r loading-data}
 # Replace this path with the raw GitHub CSV URL when it is uploaded.
-data_source <- "Movie Survey.csv"
+data_source <- "https://raw.githubusercontent.com/kjeannite/data-607/refs/heads/master/assignment-3a/Movie%20Survey.csv"
 
 survey <- read.csv(data_source, check.names = FALSE,
                    na.strings = c("", "NA", "Did not see", "Did not saee"))

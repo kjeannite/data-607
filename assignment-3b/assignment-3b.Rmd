@@ -25,7 +25,7 @@ The data comes from the [Steam Games Dataset on Mendeley Data](https://data.mend
 Here I am loading that CSV and putting the dates in order for each game. The dataset contains 365 days for each game, from January 1 through December 31, 2019. The daily average represents how many people were playing at the same time, rather than the total number of different people who played that day.
 
 ```{r loading-data}
-daily_players <- read.csv("steam_daily_2019.csv") %>%
+daily_players <- read.csv("https://raw.githubusercontent.com/kjeannite/data-607/refs/heads/master/assignment-3b/steam_daily_2019.csv") %>%
   select(game, date, daily_avg_players) %>%
   mutate(date = as.Date(date), year = format(date, "%Y")) %>%
   arrange(game, date)
