@@ -1,0 +1,98 @@
+---
+title: "Project 1: Chess Tournament Results"
+author: "Kenny Jeannite"
+date: "2026-09-26"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+library(dplyr)
+library(stringr)
+```
+
+## Introduction
+
+For this project, I am working with a text file of chess tournament results. The goal is to turn it into a CSV file with one row per player and these columns:
+
+Player's Name, Player's State, Total Number of Points, Player's Pre-Rating, and Average Pre Chess Rating of Opponents
+
+## Loading the Data
+
+Each player takes up two lines in the file, and every player is separated by a line of dashes. The first four lines are the header, so I skip them and then remove all of the dash lines.
+
+```{r loading-data}
+raw_lines <- readLines("https://raw.githubusercontent.com/kjeannite/data-607/refs/heads/master/Project1/chess.txt")
+
+player_lines <- raw_lines[-(1:4)]
+player_lines <- player_lines[!str_detect(player_lines, "^-+$")]
+
+head(player_lines, 4)
+```
+
+## Splitting the Two Lines
+
+The first line of each player has the pair number, name, total points and the seven rounds. The second line has the state and the pre-rating. The odd lines are the first line and the even lines are the second line.
+
+```{r split-lines}
+line1 <- player_lines[seq(1, length(player_lines), by = 2)]
+line2 <- player_lines[seq(2, length(player_lines), by = 2)]
+
+line1_parts <- str_split_fixed(line1, "\\|", 11)
+line2_parts <- str_split_fixed(line2, "\\|", 11)
+```
+
+## Building the Player Table
+
+Here I pull out each column I need. The pre-rating comes after `R:` on the second line. Some ratings have extra letters (like `1220P13`), so I only keep the first group of digits. For each round, I only keep the opponent's pair number. Rounds without an opponent (byes or no game) become `NA`.
+
+```{r player-table}
+players <- data.frame(
+  pair_num   = as.integer(str_trim(line1_parts[, 1])),
+  name       = str_trim(line1_parts[, 2]),
+  state      = str_trim(line2_parts[, 1]),
+  points     = as.numeric(str_trim(line1_parts[, 3])),
+  pre_rating = as.integer(str_match(line2_parts[, 2], "R:\\s*(\\d+)")[, 2])
+)
+
+# Opponent pair numbers for rounds 1 through 7
+opponents <- apply(line1_parts[, 4:10], 2, function(x) as.integer(str_extract(x, "\\d+")))
+
+head(players)
+```
+
+## Average Opponent Rating
+
+For each player, I look up the pre-rating of every opponent they played and take the average. Rounds with no opponent are left out, so the average is divided by the number of games actually played.
+
+```{r opponent-average}
+players$avg_opp_rating <- sapply(1:nrow(players), function(i) {
+  opp_ratings <- players$pre_rating[match(opponents[i, ], players$pair_num)]
+  round(mean(opp_ratings, na.rm = TRUE))
+})
+
+head(players)
+```
+
+Checking the first player against the example in the instructions (Gary Hua, ON, 6.0, 1794, 1605):
+
+```{r check}
+players %>% filter(pair_num == 1)
+```
+
+## Writing the CSV
+
+Finally, I keep only the five columns asked for and write them to a CSV file.
+
+```{r write-csv}
+chess_results <- players %>%
+  select(name, state, points, pre_rating, avg_opp_rating)
+
+write.csv(chess_results, "chess_results.csv", row.names = FALSE)
+
+chess_results
+```
+
+## Conclusion
+
+The text file was turned into a clean table with one row per player. The trickiest part was that each player's information was split across two lines, and the opponent ratings had to be looked up using the pair numbers from each round. The final CSV can now be imported into a database or used for more analysis.
