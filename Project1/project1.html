@@ -370,7 +370,7 @@ Pre-Rating, and Average Pre Chess Rating of Opponents</p>
 <p>Each player takes up two lines in the file, and every player is
 separated by a line of dashes. The first four lines are the header, so I
 skip them and then remove all of the dash lines.</p>
-<pre class="r"><code>raw_lines &lt;- readLines(&quot;chess.txt&quot;)
+<pre class="r"><code>raw_lines &lt;- readLines(&quot;https://raw.githubusercontent.com/kjeannite/data-607/refs/heads/master/Project1/chess.txt&quot;)
 
 player_lines &lt;- raw_lines[-(1:4)]
 player_lines &lt;- player_lines[!str_detect(player_lines, &quot;^-+$&quot;)]
