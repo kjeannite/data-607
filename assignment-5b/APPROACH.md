@@ -1,0 +1,3 @@
+# Assignment 5B: Approach
+
+I will read `chess_results.csv` from my Project 1 results and compute each player's expected score with the Elo formula `E = 1 / (1 + 10^((opp_rating - pre_rating) / 400))`, using each player's `pre_rating` and `avg_opp_rating` (source: the Elo video and the [Elo rating system on Wikipedia](https://en.wikipedia.org/wiki/Elo_rating_system)). Since the CSV only has the average opponent rating, each player's expected score is E multiplied by the 7 rounds, which slightly overstates it for players who had a bye. I will then calculate `diff = points - expected` for each player. Finally, I will rank the results to present two tables: the five biggest overperformers and the five biggest underperformers.

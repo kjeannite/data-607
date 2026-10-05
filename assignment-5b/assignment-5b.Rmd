@@ -1,0 +1,235 @@
+---
+title: "Assignment 5B: ELO Calculations"
+author: "Kenny Jeannite"
+date: "2026-10-03"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+library(dplyr)
+library(tidyr)
+library(stringr)
+library(ggplot2)
+```
+
+# Introduction
+
+In Project 1, I turned a text file of chess tournament results into a table of players with their pre-ratings and the average rating of their opponents. For this assignment, I am using the Elo rating system to calculate how many points each player was expected to score based on who they played, and then compare that to how many points they actually scored.
+
+The main question I want to answer is: which five players most overperformed their expected score, and which five most underperformed?
+
+# The Elo Formula
+
+The Elo system gives the probability that player A beats player B based on the difference in their ratings:
+
+$$
+E = \frac{1}{1 + 10^{(R_{opponent} - R_{player}) / 400}}
+$$
+
+A win is worth 1 point, a draw is 0.5 and a loss is 0. If two players have the same rating, each has an expected score of 0.5. A player rated 400 points higher is expected to score about 0.91 against the lower rated player. Adding up E for every game a player played gives their expected score for the whole tournament.
+
+Sources: [The Elo Rating System for Chess and Beyond](https://www.youtube.com/watch?v=AsYfbmp0To0) (video, Feb 15, 2019) and the [Elo rating system article on Wikipedia](https://en.wikipedia.org/wiki/Elo_rating_system#Mathematical_details).
+
+```{r elo-function}
+# Expected score for a player against one opponent, based on the rating difference
+elo_expected <- function(player_rating, opponent_rating) {
+  1 / (1 + 10^((opponent_rating - player_rating) / 400))
+}
+
+# Quick check: equal ratings should give 0.5, a 400 point edge should give about 0.91
+elo_expected(1500, 1500)
+elo_expected(1900, 1500)
+```
+
+# Loading the Data
+
+In my approach, I planned to use the average opponent rating from my Project 1 CSV. The instructions say to use the difference between each player and *each* of their opponents, so instead I am going back to the original text file to get the opponent in every round. I am using the same parsing steps from Project 1.
+
+```{r loading-data}
+# Read the raw tournament text file from GitHub
+raw_lines <- readLines("https://raw.githubusercontent.com/kjeannite/data-607/refs/heads/master/Project1/chess.txt")
+
+# Drop the header rows and the dashed separator lines
+player_lines <- raw_lines[-(1:4)]
+player_lines <- player_lines[!str_detect(player_lines, "^-+$")]
+
+# Each player takes two lines: line 1 has name, points and rounds; line 2 has the rating
+line1 <- player_lines[seq(1, length(player_lines), by = 2)]
+line2 <- player_lines[seq(2, length(player_lines), by = 2)]
+
+# Split each line into columns on the | character
+line1_parts <- str_split_fixed(line1, "\\|", 11)
+line2_parts <- str_split_fixed(line2, "\\|", 11)
+
+# Build one row per player, pulling the pre-rating out of the "R: 1794" text
+players <- data.frame(
+  pair_num   = as.integer(str_trim(line1_parts[, 1])),
+  name       = str_trim(line1_parts[, 2]),
+  points     = as.numeric(str_trim(line1_parts[, 3])),
+  pre_rating = as.integer(str_match(line2_parts[, 2], "R:\\s*(\\d+)")[, 2])
+)
+
+head(players)
+```
+
+# One Row per Game
+
+Each round cell has a result letter and an opponent number, like `W  39`. Here I am splitting every round into its own row with the result and the opponent. Only wins (W), losses (L) and draws (D) are actual games against an opponent. The other letters are byes (B and H), forfeits (X and F) and rounds that were not played (U), so I leave those out.
+
+```{r games}
+# Take the 7 round columns and tag each row with the player's pair number
+rounds <- as.data.frame(line1_parts[, 4:10])
+names(rounds) <- paste0("round_", 1:7)
+rounds$pair_num <- players$pair_num
+
+# Make one row per round, split out the result letter and opponent, and keep only real games
+games <- rounds %>%
+  pivot_longer(cols = -pair_num, names_to = "round", values_to = "cell") %>%
+  mutate(
+    result   = str_extract(cell, "^[A-Z]"),
+    opponent = as.integer(str_extract(cell, "\\d+"))
+  ) %>%
+  filter(result %in% c("W", "L", "D")) %>%
+  select(pair_num, round, result, opponent)
+
+head(games, 10)
+```
+
+There are `r nrow(games)` player-games in the tournament.
+
+# Expected Score for Each Game
+
+Now I look up the pre-rating of the player and their opponent in each game, calculate the expected score with the Elo formula, and turn the result letter into points.
+
+```{r expected-per-game}
+# Add both players' ratings, then calculate expected and actual points for each game
+games <- games %>%
+  left_join(players %>% select(pair_num, player_rating = pre_rating), by = "pair_num") %>%
+  left_join(players %>% select(pair_num, opponent_rating = pre_rating),
+            by = c("opponent" = "pair_num")) %>%
+  mutate(
+    expected = elo_expected(player_rating, opponent_rating),
+    actual   = case_when(result == "W" ~ 1, result == "D" ~ 0.5, TRUE ~ 0)
+  )
+
+head(games, 10)
+```
+
+# Expected vs Actual for Each Player
+
+Here I add up the expected and actual scores for each player. I am only comparing points from games that were actually played, because a bye gives a player points without an opponent, so there is nothing to compare it to. I also kept the total points from the tournament so you can see where byes made a difference.
+
+```{r player-summary}
+# Total up expected and actual points per player, then add back their name and rating
+results <- games %>%
+  group_by(pair_num) %>%
+  summarise(
+    games_played   = n(),
+    expected_score = round(sum(expected), 2),
+    actual_score   = sum(actual)
+  ) %>%
+  mutate(difference = round(actual_score - expected_score, 2)) %>%
+  left_join(players, by = "pair_num") %>%
+  select(pair_num, name, pre_rating, total_points = points,
+         games_played, actual_score, expected_score, difference)
+
+head(results)
+```
+
+Checking the first player, Gary Hua was rated `r results$pre_rating[1]` and played 7 games. He was expected to score `r results$expected_score[1]` and actually scored `r results$actual_score[1]`.
+
+# Top 5 Overperformers
+
+These are the players whose actual score was the furthest above their expected score.
+
+```{r overperformers}
+# Biggest positive differences first
+overperformers <- results %>%
+  arrange(desc(difference)) %>%
+  slice_head(n = 5) %>%
+  select(name, pre_rating, actual_score, expected_score, difference)
+
+knitr::kable(overperformers)
+```
+
+Aditya Bajaj had the biggest gap. He was rated 1384 and was only expected to score about 2 points, but he won 6 of his 7 games, including wins over players rated 1745, 1712 and 1666. Jacob Alexander Lavalley is interesting because he was rated only 377, so the formula expected almost nothing from him (0.04 points), and he won 3 games.
+
+# Top 5 Underperformers
+
+These are the players whose actual score was the furthest below their expected score.
+
+```{r underperformers}
+# Biggest negative differences first
+underperformers <- results %>%
+  arrange(difference) %>%
+  slice_head(n = 5) %>%
+  select(name, pre_rating, actual_score, expected_score, difference)
+
+knitr::kable(underperformers)
+```
+
+Loren Schwiebert was the second highest rated player in the tournament at 1745 and was expected to score about 6.3 points, but only scored 3.5. Two of his losses were to Aditya Bajaj and Anvit Rao, who are both in the overperformer list above. Larry Hodge only played 6 games because he had a bye in round 4. The bye gave him a point in the standings, but there was no opponent, so his actual score here (1.0) is only from the games he played.
+
+# Overperformers vs Underperformers
+
+This chart puts both lists side by side. Bars to the right are players who scored more than expected, and bars to the left scored less.
+
+```{r performance-chart, fig.width = 8, fig.height = 5}
+# Stack the two lists together and label which group each player is in
+top_and_bottom <- bind_rows(
+  overperformers %>% mutate(group = "Overperformer"),
+  underperformers %>% mutate(group = "Underperformer")
+)
+
+# Horizontal bars sorted by the difference between actual and expected score
+ggplot(top_and_bottom, aes(x = difference, y = reorder(name, difference), fill = group)) +
+  geom_col() +
+  geom_vline(xintercept = 0) +
+  scale_fill_manual(values = c("Overperformer" = "steelblue", "Underperformer" = "firebrick")) +
+  labs(
+    title = "Actual Score Minus Expected Score",
+    x = "Points above or below expected",
+    y = NULL,
+    fill = NULL
+  ) +
+  theme_minimal()
+```
+
+# Comparing to the Average Rating Method
+
+In my approach, I planned to use each player's average opponent rating instead of each game. To see how much that changes things, I ran the same formula using the average from my Project 1 CSV, multiplied by the number of games played.
+
+```{r average-method}
+# Load the Project 1 results, which have each player's average opponent rating
+chess_results <- read.csv("https://raw.githubusercontent.com/kjeannite/data-607/refs/heads/master/Project1/chess_results.csv")
+
+# Expected score using the average opponent rating, and how far it is from the per-game version
+comparison <- results %>%
+  left_join(chess_results %>% select(name, avg_opp_rating), by = "name") %>%
+  mutate(
+    expected_avg_method = round(games_played * elo_expected(pre_rating, avg_opp_rating), 2),
+    gap                 = round(expected_score - expected_avg_method, 2)
+  )
+
+summary(comparison$gap)
+```
+
+For `r sum(abs(comparison$gap) < 0.25)` of the `r nrow(comparison)` players, the two methods are within a quarter of a point of each other. But for some players the difference is over a full point, which is enough to change the rankings.
+
+```{r biggest-gaps}
+# Players where the two methods disagree the most
+comparison %>%
+  arrange(desc(abs(gap))) %>%
+  slice_head(n = 5) %>%
+  select(name, games_played, expected_score, expected_avg_method, gap) %>%
+  knitr::kable()
+```
+
+This happens because the Elo curve is not a straight line. If a player faces one very weak opponent and a few strong ones, the average rating hides how one-sided that weak game was. The game-by-game version follows the instructions and is more accurate, so that is the one I used for the rankings.
+
+# Conclusion
+
+Using the Elo formula, I was able to calculate an expected score for every player and compare it to how they actually did. The biggest overperformers were lower rated players, mostly in the 1200 to 1400 range, who beat much higher rated opponents. The biggest underperformers were mostly players who were rated well above their opponents and lost or drew games they were expected to win. Going back to the original text file instead of using the average opponent rating from Project 1 made a real difference for some players.
+
+One limitation is that some players have provisional ratings (like `1220P13`), which means they have only played a few rated games and their rating is less reliable. A player with a provisional rating that is too low will look like an overperformer even if they just played at their real level. Also, a single tournament of 7 rounds is a small sample, so a couple of upsets can make a big difference in the rankings.
