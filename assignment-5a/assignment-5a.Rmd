@@ -20,12 +20,12 @@ The main question I want to answer is: which airline has the better on-time perf
 
 # Loading the Data
 
-I recreated the table from the assignment as a CSV file in the same format. The airline name is left blank on the "delayed" rows and there is an empty row between the two airlines, just like the original. I uploaded the file to my GitHub repo so it can be read from anywhere.
+I recreated the table from the assignment as a CSV file in the same format. The values are padded with spaces so the columns line up, so I use `strip.white = TRUE` to trim them; otherwise " delayed" would not match "delayed" later on. The airline name is left blank on the "delayed" rows and there is an empty row between the two airlines, just like the original. I uploaded the file to my GitHub repo so it can be read from anywhere.
 
 ```{r loading-data}
 data_source <- "https://raw.githubusercontent.com/kjeannite/data-607/refs/heads/master/assignment-5a/airlines.csv"
 
-airlines_raw <- read.csv(data_source, check.names = FALSE, na.strings = "")
+airlines_raw <- read.csv(data_source, check.names = FALSE, na.strings = "", strip.white = TRUE)
 
 airlines_raw
 ```
@@ -118,7 +118,7 @@ When I look at the cities one at a time, Alaska has a lower delay percentage tha
 
 # Why the Results Disagree
 
-This is the strange part. Alaska is better in every single city, but AM West is better overall. At first that did not make sense to me, so I looked
+This is the strange part. Alaska is better in every single city, but AM West is better overall. At first that did not make sense to me, so I looked at where each airline's flights actually go.
 
 ```{r flight-share}
 flight_share <- by_city %>%

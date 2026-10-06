@@ -372,13 +372,15 @@ look at the cities separately or all together?</p>
 <div id="loading-the-data" class="section level1">
 <h1>Loading the Data</h1>
 <p>I recreated the table from the assignment as a CSV file in the same
-format. The airline name is left blank on the “delayed” rows and there
-is an empty row between the two airlines, just like the original. I
-uploaded the file to my GitHub repo so it can be read from anywhere.</p>
-<pre class="r"><code>#data_source &lt;- &quot;https://raw.githubusercontent.com/kjeannite/data-607/refs/heads/master/assignment-5a/airlines.csv&quot;
-data_source &lt;- &quot;airlines.csv&quot;
+format. The values are padded with spaces so the columns line up, so I
+use <code>strip.white = TRUE</code> to trim them; otherwise ” delayed”
+would not match “delayed” later on. The airline name is left blank on
+the “delayed” rows and there is an empty row between the two airlines,
+just like the original. I uploaded the file to my GitHub repo so it can
+be read from anywhere.</p>
+<pre class="r"><code>data_source &lt;- &quot;https://raw.githubusercontent.com/kjeannite/data-607/refs/heads/master/assignment-5a/airlines.csv&quot;
 
-airlines_raw &lt;- read.csv(data_source, check.names = FALSE, na.strings = &quot;&quot;)
+airlines_raw &lt;- read.csv(data_source, check.names = FALSE, na.strings = &quot;&quot;, strip.white = TRUE)
 
 airlines_raw</code></pre>
 <pre><code>##                   Los Angeles Phoenix San Diego San Francisco Seattle
@@ -505,7 +507,7 @@ for AM West.</p>
 <h1>Why the Results Disagree</h1>
 <p>This is the strange part. Alaska is better in every single city, but
 AM West is better overall. At first that did not make sense to me, so I
-looked</p>
+looked at where each airline’s flights actually go.</p>
 <pre class="r"><code>flight_share &lt;- by_city %&gt;%
   group_by(airline) %&gt;%
   mutate(share_of_flights = round(100 * total_flights / sum(total_flights), 1)) %&gt;%
