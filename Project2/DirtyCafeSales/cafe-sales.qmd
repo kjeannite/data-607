@@ -1,0 +1,257 @@
+---
+title: "Project 2: Dirty Cafe Sales"
+author: "Kenny Jeannite"
+date: "2026-10-04"
+format:
+  html:
+    embed-resources: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+```
+
+# Introduction
+
+For this dataset, I am using the [Dirty Cafe Sales](https://www.kaggle.com/datasets/ahmedmohamed2003/cafe-sales-dirty-data-for-cleaning-training/data) dataset from Kaggle, which I posted about in Discussion 5A. It is a synthetic dataset of 10,000 transactions from a cafe. Each row is one transaction with the item, quantity, price per unit, total spent, payment method, location and date.
+
+The dataset was made for practicing data cleaning, so it has a lot of problems. Some cells are blank, and others say `ERROR` or `UNKNOWN` instead of a real value. The main questions I want to answer once it is cleaned are:
+
+- Which payment methods are used the most?
+- Which item is bought the most, and which brings in the most money?
+- Where do customers spend the most, by item, payment method and location?
+
+# Loading the Data
+
+Here I am loading the CSV from my GitHub. I am reading every column as text at first so I can see exactly what kinds of bad values are in the data before I change anything.
+
+```{r loading-data}
+data_source <- "https://raw.githubusercontent.com/kjeannite/data-607/refs/heads/master/Project2/DirtyCafeSales/dirty_cafe_sales.csv"
+
+cafe_raw <- read.csv(data_source, check.names = FALSE, colClasses = "character")
+
+head(cafe_raw)
+```
+
+There are `r format(nrow(cafe_raw), big.mark = ",")` transactions and `r sum(duplicated(cafe_raw[["Transaction ID"]]))` duplicate transaction IDs, so each row is a separate transaction.
+
+# Finding the Problem Values
+
+To count the bad values in every column at once, I turned the table into a long format with one row for each cell. Then I counted how many cells in each column are blank, `ERROR` or `UNKNOWN`.
+
+```{r problem-values}
+problem_counts <- cafe_raw %>%
+  pivot_longer(cols = -`Transaction ID`, names_to = "column", values_to = "value") %>%
+  mutate(problem = case_when(
+    value == "" ~ "Blank",
+    value == "ERROR" ~ "ERROR",
+    value == "UNKNOWN" ~ "UNKNOWN",
+    TRUE ~ "OK"
+  )) %>%
+  count(column, problem) %>%
+  pivot_wider(names_from = problem, values_from = n, values_fill = 0) %>%
+  mutate(percent_bad = round(100 * (Blank + ERROR + UNKNOWN) / nrow(cafe_raw), 1)) %>%
+  arrange(desc(percent_bad))
+
+knitr::kable(problem_counts)
+```
+
+Location and Payment Method are the worst, with about 40% and 32% of their values missing. Item is missing about 10% of the time, and the rest of the columns are each missing around 5%. None of the three bad values tell me anything real, so I am treating blank, `ERROR` and `UNKNOWN` all as missing.
+
+# Cleaning the Data
+
+## Fixing the Column Types
+
+Here I am renaming the columns so they are easier to type, changing all of the bad values to `NA`, and converting the numbers and dates to the correct types.
+
+```{r clean-types}
+cafe <- cafe_raw %>%
+  rename(
+    transaction_id = `Transaction ID`,
+    item = Item,
+    quantity = Quantity,
+    price_per_unit = `Price Per Unit`,
+    total_spent = `Total Spent`,
+    payment_method = `Payment Method`,
+    location = Location,
+    transaction_date = `Transaction Date`
+  ) %>%
+  mutate(across(everything(), ~ na_if(na_if(na_if(.x, ""), "ERROR"), "UNKNOWN"))) %>%
+  mutate(
+    quantity = as.numeric(quantity),
+    price_per_unit = as.numeric(price_per_unit),
+    total_spent = as.numeric(total_spent),
+    transaction_date = as.Date(transaction_date)
+  )
+
+summary(cafe)
+```
+
+## Building a Menu
+
+Every item in the cafe always has the same price. I checked this by counting the prices for each item, and each item only ever has one price. I can use this as a menu to fill in missing prices and missing items.
+
+```{r menu}
+menu <- cafe %>%
+  filter(!is.na(item), !is.na(price_per_unit)) %>%
+  distinct(item, price_per_unit) %>%
+  arrange(price_per_unit)
+
+menu
+```
+
+Some prices are shared by two items. Cake and Juice are both \$3.00, and Sandwich and Smoothie are both \$4.00. If an item is missing and the price is \$3.00 or \$4.00, I cannot tell which one it was, so I can only fill in items with a price that belongs to just one item.
+
+```{r unique-prices}
+unique_prices <- menu %>%
+  group_by(price_per_unit) %>%
+  filter(n() == 1) %>%
+  ungroup() %>%
+  rename(item_from_price = item)
+
+unique_prices
+```
+
+## Filling in the Missing Values
+
+Here is how I am filling in missing values:
+
+1. If the price is missing, look it up from the menu using the item.
+2. Since **total spent = quantity x price per unit**, if one of the three is missing and the other two are there, I can calculate it.
+3. If the item is missing, look it up from the price, but only for the prices that belong to one item.
+
+I count the missing values before and after so I can see how much this helped.
+
+```{r fill-missing}
+missing_before <- colSums(is.na(cafe))
+
+cafe_clean <- cafe %>%
+  left_join(menu %>% rename(menu_price = price_per_unit), by = "item") %>%
+  mutate(price_per_unit = coalesce(price_per_unit, menu_price)) %>%
+  mutate(
+    price_per_unit = coalesce(price_per_unit, total_spent / quantity),
+    quantity       = coalesce(quantity, total_spent / price_per_unit),
+    total_spent    = coalesce(total_spent, quantity * price_per_unit)
+  ) %>%
+  left_join(unique_prices, by = "price_per_unit") %>%
+  mutate(item = coalesce(item, item_from_price)) %>%
+  select(-menu_price, -item_from_price)
+
+missing_after <- colSums(is.na(cafe_clean))
+
+data.frame(missing_before, missing_after, fixed = missing_before - missing_after)
+```
+
+Quantity, price and total went from around 500 missing values each to fewer than 25. Item went from 969 missing to 480. The items that are still missing are the ones with a price of \$3.00 or \$4.00, where there are two possible items, or rows where the price was missing too. Payment method, location and date did not change because there is no other column I can use to figure them out. I am leaving those as `NA` instead of guessing, since guessing would change the results of the analysis.
+
+## Checking the Math
+
+To make sure nothing went wrong, I am checking that total spent equals quantity times price for every row where all three are filled in.
+
+```{r check-math}
+cafe_clean %>%
+  filter(!is.na(quantity), !is.na(price_per_unit), !is.na(total_spent)) %>%
+  summarise(
+    rows_checked = n(),
+    rows_that_do_not_match = sum(abs(total_spent - quantity * price_per_unit) > 0.001)
+  )
+```
+
+Every row matches.
+
+# Analysis
+
+## Payment Methods
+
+For the payment methods, I am only counting the transactions where the payment method is known.
+
+```{r payment-methods}
+payment_summary <- cafe_clean %>%
+  filter(!is.na(payment_method)) %>%
+  count(payment_method, name = "transactions") %>%
+  mutate(percent = round(100 * transactions / sum(transactions), 1)) %>%
+  arrange(desc(transactions))
+
+knitr::kable(payment_summary)
+```
+
+The three payment methods are almost even, each at about a third of transactions. There is no clear favorite. Since `r format(sum(is.na(cafe_clean$payment_method)), big.mark = ",")` transactions have no payment method, this could change if the real values were known.
+
+## Most Bought Items
+
+Here I am looking at both the number of items sold and the revenue, because an item that sells a lot is not always the one that makes the most money.
+
+```{r items}
+item_summary <- cafe_clean %>%
+  filter(!is.na(item), !is.na(quantity), !is.na(total_spent)) %>%
+  group_by(item) %>%
+  summarise(
+    transactions = n(),
+    units_sold = sum(quantity),
+    revenue = sum(total_spent)
+  ) %>%
+  arrange(desc(revenue))
+
+knitr::kable(item_summary)
+```
+
+```{r items-chart}
+ggplot(item_summary, aes(x = reorder(item, revenue), y = revenue)) +
+  geom_col(fill = "steelblue") +
+  coord_flip() +
+  labs(title = "Total Revenue by Item", x = NULL, y = "Revenue ($)") +
+  theme_minimal()
+```
+
+The number of units sold is about the same for every item. The revenue is very different because the prices are different. Salad is the top earner since it is the most expensive item at \$5.00, and Cookies bring in the least at \$1.00 each, even though about the same number are sold.
+
+## Who Spends the Most
+
+The dataset does not have customer IDs, so I cannot see who the individual customers are. Instead, I am comparing the average amount spent per transaction by payment method and by location.
+
+```{r spending}
+cafe_clean %>%
+  filter(!is.na(total_spent)) %>%
+  mutate(
+    payment_method = replace_na(payment_method, "Missing"),
+    location = replace_na(location, "Missing")
+  ) %>%
+  group_by(payment_method, location) %>%
+  summarise(avg_spent = round(mean(total_spent), 2), .groups = "drop") %>%
+  pivot_wider(names_from = location, values_from = avg_spent) %>%
+  knitr::kable()
+```
+
+The average spend is around \$9 no matter the payment method or location. Customers who pay with cash, card or a digital wallet spend about the same amount, and so do in-store and takeaway customers. The rows with a missing payment method or location look the same as the others, which is a good sign that those values are missing at random and are not hiding a certain type of customer.
+
+## Sales Over Time
+
+Finally, I am looking at revenue by month for the transactions that have a date.
+
+```{r monthly}
+monthly <- cafe_clean %>%
+  filter(!is.na(transaction_date), !is.na(total_spent)) %>%
+  mutate(month = format(transaction_date, "%Y-%m")) %>%
+  group_by(month) %>%
+  summarise(revenue = sum(total_spent))
+
+ggplot(monthly, aes(x = month, y = revenue, group = 1)) +
+  geom_line() +
+  geom_point() +
+  labs(title = "Monthly Revenue", x = "Month", y = "Revenue ($)") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+Revenue stays between about \$6,600 and \$7,400 every month. February is the lowest, which makes sense since it has the fewest days. There is no clear busy season, which also makes sense since the data is synthetic.
+
+# Conclusion
+
+Most of the work on this dataset was cleaning. By noticing that every item always has the same price, and that total spent is quantity times price, I was able to fill in almost all of the missing quantities, prices and totals, and about half of the missing items, instead of throwing those rows away.
+
+For the analysis, the payment methods were split almost evenly, every item sold about the same number of units, and Salad brought in the most money because it has the highest price. Average spending was about the same across payment methods and locations.
+
+One limitation is that I could not fill in payment method, location or date, since nothing else in the row tells me what they should be. About 40% of the locations are missing, so the location results are based on a smaller part of the data. Also, because the data is synthetic, the patterns are much more even than I would expect from a real cafe.

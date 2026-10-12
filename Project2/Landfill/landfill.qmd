@@ -1,0 +1,355 @@
+---
+title: "Project 2: EPA LMOP Landfill Database"
+author: "Kenny Jeannite"
+date: "2026-10-11"
+format:
+  html:
+    toc: true
+    embed-resources: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+```
+
+# Introduction
+
+For this dataset, I am using the [LMOP Landfill and Project Database](https://www.epa.gov/lmop/lmop-landfill-and-project-database#access) from the EPA, which Nicholas Weiner posted about in Discussion 5A. LMOP is the EPA's Landfill Methane Outreach Program. As trash breaks down in a landfill it gives off landfill gas (LFG), which is about half methane, a strong greenhouse gas. Landfills can collect that gas and flare it or use it for energy, which cuts down on emissions.
+
+I downloaded the full Excel file (`lmopcompositedata.xlsx`). The data is on the "LMOP Database" sheet, which I saved as a CSV with the same 69 columns so I could load it from my GitHub.
+
+Nicholas pointed out that the file has a lot of blank cells and unknown values, like when a landfill opened or closed and what kind of ownership it has, and that it would be interesting to look at emissions by state. The questions I want to answer are:
+
+- Which states have the most landfills and the most waste in them?
+- Which states cut the most emissions with landfill gas energy projects?
+- Which states have the most landfills that could still have a project but do not?
+- Does ownership type make a difference in whether a landfill collects its gas?
+
+# Loading the Data
+
+I am reading every column as text at first so I can see the blanks and `Unknown` values before changing anything.
+
+```{r load-data}
+data_source <- "https://raw.githubusercontent.com/kjeannite/data-607/refs/heads/master/Project2/Landfill/landfill.csv"
+
+landfill_raw <- read.csv(data_source, check.names = FALSE, colClasses = "character")
+
+dim(landfill_raw)
+```
+
+There are `r format(nrow(landfill_raw), big.mark = ",")` rows and `r ncol(landfill_raw)` columns, but only `r format(n_distinct(landfill_raw[["Landfill ID"]]), big.mark = ",")` unique landfills. This is the main problem with the layout.
+
+# Why the Data Is Untidy
+
+Each row is not one landfill. It is one landfill **and** one energy project at that landfill. The first 47 columns describe the landfill (location, size, waste, gas collection) and the last 22 describe the project (status, type, start date, emission reductions). If a landfill has three projects, all of its landfill information is copied onto three rows.
+
+```{r repeats}
+landfill_raw %>%
+  count(`Landfill ID`, name = "rows") %>%
+  count(rows, name = "landfills")
+```
+
+Most landfills have one row, but some have up to 9. This means that if I add up the waste in place by state straight from this table, landfills with several projects get counted more than once. In tidy data each type of observation should be in its own table, so I am going to split it into a **landfills** table and a **projects** table.
+
+There are some other problems too:
+
+- Blank cells and the word `Unknown` are both used for missing values.
+- Some measurements come in pairs with the year they were measured, for example `Waste in Place (tons)` and `Waste in Place Year`, and `LFG Collected (mmscfd)` and `LFG Collected Year`. The type of measurement is stored in the column names.
+- The things a landfill does on site besides burying trash (anaerobic digester, composting, solar, wind) are four separate Yes/No columns.
+
+Here is how much of each column is blank or `Unknown`, for the 15 worst columns:
+
+```{r missing-overview}
+landfill_raw %>%
+  pivot_longer(everything(), names_to = "column", values_to = "value") %>%
+  group_by(column) %>%
+  summarise(
+    blank = sum(value == ""),
+    unknown = sum(value == "Unknown"),
+    percent_missing = round(100 * (blank + unknown) / n(), 1)
+  ) %>%
+  arrange(desc(percent_missing)) %>%
+  head(15) %>%
+  knitr::kable()
+```
+
+# Cleaning the Data
+
+## Renaming the Columns
+
+With 69 column names that have spaces, question marks and units in them, I am changing them all to lowercase with underscores instead of renaming each one by hand. For example `LFG Collected (mmscfd)` becomes `lfg_collected_mmscfd`.
+
+```{r rename}
+landfill <- landfill_raw
+names(landfill) <- names(landfill) %>%
+  gsub("[^A-Za-z0-9]+", "_", .) %>%
+  tolower() %>%
+  gsub("^_|_$", "", .)
+
+names(landfill)
+```
+
+## Missing Values
+
+Blank and `Unknown` both mean the value is not known, so I am changing both to `NA`.
+
+```{r na-values}
+landfill <- landfill %>%
+  mutate(across(everything(), ~ na_if(na_if(trimws(.x), ""), "Unknown")))
+```
+
+## Splitting into Two Tables
+
+I checked which columns change between rows of the same landfill. Only the two "Projected Reductions" columns do, so those belong to the project and not the landfill, even though they come before `Project ID` in the file.
+
+```{r check-columns}
+landfill %>%
+  group_by(landfill_id) %>%
+  summarise(across(ghgrp_id:projected_avoided_reductions_mmtco2e_yr_mw, n_distinct)) %>%
+  select(-landfill_id) %>%
+  summarise(across(everything(), ~ sum(.x > 1))) %>%
+  pivot_longer(everything(), names_to = "column", values_to = "landfills_with_different_values") %>%
+  filter(landfills_with_different_values > 0)
+```
+
+The landfills table keeps one row per landfill, and I am converting the numeric columns.
+
+```{r landfills-table}
+landfills <- landfill %>%
+  select(ghgrp_id:passive_venting_flaring) %>%
+  distinct() %>%
+  mutate(across(c(latitude, longitude, year_landfill_opened, landfill_closure_year,
+                  design_landfill_area_acres:landfill_design_capacity_tons,
+                  waste_in_place_tons, waste_in_place_year,
+                  annual_waste_acceptance_rate_tons_per_year, annual_waste_acceptance_year,
+                  lfg_generated_mmscfd, lfg_collected_mmscfd, lfg_collected_year,
+                  percent_methane, number_of_flares, lfg_flared_mmscfd, lfg_flared_year,
+                  number_of_wells, gccs_capacity_cfm), as.numeric))
+
+nrow(landfills)
+n_distinct(landfills$landfill_id)
+```
+
+Now there is exactly one row for each of the `r format(nrow(landfills), big.mark = ",")` landfills. The projects table keeps the landfill ID and state so it can be joined back.
+
+```{r projects-table}
+projects <- landfill %>%
+  select(landfill_id, state, projected_direct_reductions_mmtco2e_yr_mw:current_year_emission_reductions_mmtco2e_yr_avoided) %>%
+  rename(
+    projected_direct = projected_direct_reductions_mmtco2e_yr_mw,
+    projected_avoided = projected_avoided_reductions_mmtco2e_yr_mw,
+    current_direct = current_year_emission_reductions_mmtco2e_yr_direct,
+    current_avoided = current_year_emission_reductions_mmtco2e_yr_avoided
+  ) %>%
+  mutate(
+    across(c(projected_direct, projected_avoided, current_direct, current_avoided,
+             actual_mw_generation, rated_mw_capacity, lfg_flow_to_project_mmscfd), as.numeric),
+    project_start_date = as.Date(project_start_date),
+    project_shutdown_date = as.Date(project_shutdown_date)
+  )
+
+projects %>% count(current_project_status, sort = TRUE)
+```
+
+Not every row in the projects table is a real project. `Candidate`, `Future Potential` and `Low Potential` are landfills that the EPA thinks could support a project but do not have one, and almost all of those rows have no project name or type. The `r sum(is.na(projects$current_project_status))` rows with an unknown status also have no project information at all. I am keeping them, but I will treat them separately from actual projects in the analysis.
+
+## Reshaping the Measurement and Year Pairs
+
+Four of the landfill measurements have a matching year column. To make the measurement name a value instead of part of the column name, I renamed them to a `measure__part` pattern and used `pivot_longer()` with `.value`, so each row becomes one landfill, one measurement, its value and its year.
+
+```{r pivot-measures}
+landfill_measures <- landfills %>%
+  select(landfill_id, state,
+         waste_in_place__value = waste_in_place_tons,
+         waste_in_place__year = waste_in_place_year,
+         waste_accepted__value = annual_waste_acceptance_rate_tons_per_year,
+         waste_accepted__year = annual_waste_acceptance_year,
+         lfg_collected__value = lfg_collected_mmscfd,
+         lfg_collected__year = lfg_collected_year,
+         lfg_flared__value = lfg_flared_mmscfd,
+         lfg_flared__year = lfg_flared_year) %>%
+  pivot_longer(
+    cols = -c(landfill_id, state),
+    names_to = c("measure", ".value"),
+    names_sep = "__"
+  ) %>%
+  filter(!is.na(value))
+
+head(landfill_measures)
+```
+
+This makes it easy to see which year each measurement comes from:
+
+```{r measure-years}
+landfill_measures %>%
+  group_by(measure) %>%
+  summarise(
+    landfills = n(),
+    missing_year = sum(is.na(year)),
+    earliest_year = min(year, na.rm = TRUE),
+    latest_year = max(year, na.rm = TRUE)
+  ) %>%
+  knitr::kable()
+```
+
+Most of the measurements are from recent years, but some are much older, so the waste numbers are not all from the same point in time. Also, a lot of landfills have a waste in place amount with no year listed. I am still using the waste in place values, but this means they are best thought of as the latest known amount for each landfill, not a total for one specific year.
+
+## Reshaping the On-Site Activity Columns
+
+The four Yes/No activity columns are really one variable, which activity is happening at the landfill. I am pivoting them longer and keeping only the `Yes` rows.
+
+```{r pivot-activities}
+landfill_activities <- landfills %>%
+  select(landfill_id, state, anaerobic_digester, composting, solar_project, wind_project) %>%
+  pivot_longer(cols = -c(landfill_id, state), names_to = "activity", values_to = "has_activity") %>%
+  filter(has_activity == "Yes") %>%
+  select(-has_activity)
+
+landfill_activities %>% count(activity, sort = TRUE)
+```
+
+## Checking for Bad Years
+
+I also looked at the opened and closure years. Some closure years are very far in the future, which are the EPA's estimates of when a landfill will be full, and some landfills marked `Open` have a closure year that has already passed.
+
+```{r bad-years}
+landfills %>%
+  summarise(
+    opened_before_1920 = sum(year_landfill_opened < 1920, na.rm = TRUE),
+    closure_after_2100 = sum(landfill_closure_year > 2100, na.rm = TRUE),
+    open_but_closure_year_passed = sum(current_landfill_status == "Open" & landfill_closure_year < 2026, na.rm = TRUE),
+    missing_opened_year = sum(is.na(year_landfill_opened)),
+    missing_closure_year = sum(is.na(landfill_closure_year))
+  ) %>%
+  knitr::kable()
+```
+
+A closure year past 2100 is just an estimate, and I cannot tell if the open landfills with old closure years got an extension or if their status is out of date. I am not using these years in the analysis, so I am leaving them as they are instead of changing them.
+
+# Analysis
+
+## Landfills and Waste by State
+
+Since the landfills table has one row per landfill, I can now add up waste in place by state without double counting.
+
+```{r by-state}
+state_summary <- landfills %>%
+  group_by(state) %>%
+  summarise(
+    landfills = n(),
+    open = sum(current_landfill_status == "Open", na.rm = TRUE),
+    waste_million_tons = round(sum(waste_in_place_tons, na.rm = TRUE) / 1e6, 1),
+    collects_gas_pct = round(100 * mean(lfg_collection_system_in_place == "Yes", na.rm = TRUE), 1)
+  ) %>%
+  arrange(desc(waste_million_tons))
+
+knitr::kable(head(state_summary, 10))
+```
+
+To show why the split mattered, here is the total waste in place if I had added it up from the original table:
+
+```{r double-count}
+data.frame(
+  from_original_table = sum(as.numeric(landfill$waste_in_place_tons), na.rm = TRUE),
+  from_landfills_table = sum(landfills$waste_in_place_tons, na.rm = TRUE)
+) %>%
+  mutate(overcount_pct = round(100 * (from_original_table / from_landfills_table - 1), 1)) %>%
+  knitr::kable(format.args = list(big.mark = ","))
+```
+
+Adding it up from the original table would have overcounted the waste by about `r round(100 * (sum(as.numeric(landfill$waste_in_place_tons), na.rm = TRUE) / sum(landfills$waste_in_place_tons, na.rm = TRUE) - 1))`%.
+
+California has by far the most waste in place at about 2 billion tons, followed by Texas and Pennsylvania. California and Texas are also the states with the most people, so this is not surprising. The share of landfills with a gas collection system varies a lot, from about 83% in Michigan to only 33% in Indiana.
+
+## Emission Reductions by State
+
+For emissions, I am using the current year emission reductions for projects that are `Operational`. The EPA splits reductions into **direct** (methane that is captured and burned instead of escaping) and **avoided** (fossil fuels that did not have to be burned because the landfill gas was used instead). Both are in million metric tons of CO2 equivalent per year (MMTCO2e/yr).
+
+```{r emissions-by-state}
+emissions_by_state <- projects %>%
+  filter(current_project_status == "Operational") %>%
+  group_by(state) %>%
+  summarise(
+    projects = n(),
+    direct = sum(current_direct, na.rm = TRUE),
+    avoided = sum(current_avoided, na.rm = TRUE)
+  ) %>%
+  mutate(total = direct + avoided) %>%
+  arrange(desc(total))
+
+knitr::kable(head(emissions_by_state, 10), digits = 2)
+```
+
+```{r emissions-chart}
+emissions_by_state %>%
+  head(10) %>%
+  pivot_longer(c(direct, avoided), names_to = "type", values_to = "reduction") %>%
+  ggplot(aes(x = reorder(state, total), y = reduction, fill = type)) +
+  geom_col() +
+  coord_flip() +
+  labs(
+    title = "Top 10 States by Emission Reductions from Operational LFG Projects",
+    x = NULL, y = "MMTCO2e per year", fill = "Reduction type"
+  ) +
+  theme_minimal()
+```
+
+About 90% of the reduction in every state is direct, from methane that is destroyed instead of released. California, Texas and Pennsylvania are close at the top, with about 10 to 12.6 million tons each, even though Pennsylvania has much less waste in place than California. All operational projects together cut about `r round(sum(emissions_by_state$total), 1)` million metric tons of CO2 equivalent per year.
+
+## Landfills That Could Still Have a Project
+
+The `Candidate` rows are landfills the EPA thinks are good fits for an energy project that do not have one yet. Adding up their projected reductions shows where there is the most left to gain. The projected reduction columns are only filled in for these candidate rows.
+
+```{r candidates}
+candidates_by_state <- projects %>%
+  filter(current_project_status == "Candidate") %>%
+  group_by(state) %>%
+  summarise(
+    candidate_landfills = n(),
+    projected_reduction = sum(projected_direct + projected_avoided, na.rm = TRUE)
+  ) %>%
+  arrange(desc(projected_reduction))
+
+knitr::kable(head(candidates_by_state, 10), digits = 2)
+```
+
+## Ownership and Gas Collection
+
+Last, I compared public and private landfills to see how often they have a gas collection system. I am only using landfills where the ownership type and collection status are both known.
+
+```{r ownership}
+ownership_summary <- landfills %>%
+  filter(!is.na(ownership_type), !is.na(lfg_collection_system_in_place)) %>%
+  group_by(ownership_type) %>%
+  summarise(
+    landfills = n(),
+    collects_gas_pct = round(100 * mean(lfg_collection_system_in_place == "Yes"), 1),
+    median_waste_million_tons = round(median(waste_in_place_tons, na.rm = TRUE) / 1e6, 2)
+  )
+
+knitr::kable(ownership_summary)
+```
+
+```{r ownership-chart}
+landfills %>%
+  filter(ownership_type %in% c("Public", "Private"), !is.na(lfg_collection_system_in_place)) %>%
+  ggplot(aes(x = ownership_type, fill = lfg_collection_system_in_place)) +
+  geom_bar(position = "fill") +
+  scale_y_continuous(labels = scales::percent) +
+  labs(title = "Gas Collection System by Ownership Type", x = NULL, y = "Share of landfills",
+       fill = "Collection system") +
+  theme_minimal()
+```
+
+About 70% of private landfills collect their gas, compared to only 41% of public ones. There are only 2 landfills listed as Public/Private, so I am not reading anything into that group. Private landfills are also much bigger, with a median of 5.8 million tons of waste compared to 1.7 million for public landfills. Bigger landfills make more gas, and they are more likely to be required to collect it, so size could explain a lot of the difference instead of ownership itself.
+
+# Conclusion
+
+The biggest problem with this dataset was that each row mixed two different things, a landfill and a project. Splitting it into a landfills table and a projects table fixed the double counting, which would have inflated the total waste in place. I also changed blank and `Unknown` values to `NA`, and used `pivot_longer()` to turn the measurement and year pairs and the Yes/No activity columns into long tables.
+
+For Nicholas's question about emissions by state, California has the most waste (about 2 billion tons) and the most emission reductions from operational projects (about 12.6 million tons of CO2 equivalent per year), with Texas and Pennsylvania close behind. About 90% of the reductions come from destroying methane directly, not from replacing fossil fuels. The 444 candidate landfills show that there is still room for more projects, especially in California, Georgia and Texas. Private landfills collect their gas more often than public ones (70% compared to 41%), but they are also much bigger.
+
+One limitation is that the measurements were taken in different years, and many have no year at all, so the state totals mix older and newer numbers. A lot of the gas and size columns are also missing for more than half of the landfills, so I stuck to the columns that are mostly filled in. Finally, the EPA says the database does not include every landfill in the country, so these totals are a lower bound.

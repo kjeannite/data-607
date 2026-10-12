@@ -1,0 +1,229 @@
+---
+title: "Project 2: Raw Medical Dataset"
+author: "Kenny Jeannite"
+date: "2026-10-11"
+format:
+  html:
+    toc: true
+    embed-resources: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+```
+
+# Introduction
+
+For this dataset, I am using the [Raw Medical Dataset for Cleaning Practice](https://www.kaggle.com/datasets/aamir5659/raw-medical-dataset-for-cleaning-practice) from Kaggle, which Tenzin Thakuri posted about in Discussion 5A. It has 100 patients. Each row is one patient with their age, gender, blood pressure, cholesterol, BMI, whether they smoke, their diagnosis, their admission date and a note.
+
+Tenzin pointed out that the data has missing values in several columns and that the Smoker column mixes `Y`/`N` with `Yes`/`No`. The analysis Tenzin suggested was to see whether things like age, BMI and blood pressure are related to the diagnosis. In the replies, Johnny Maldonado asked whether missing smoker values should be kept as "Unknown" so they are not mixed up with "No", which is something I deal with below.
+
+The questions I want to answer are:
+
+- Are age, blood pressure, cholesterol or BMI different between patients with different diagnoses?
+- Are smokers more likely to have a diagnosis?
+
+# Loading the Data
+
+I am reading every column as text at first so I can see exactly what the bad values look like.
+
+```{r load-data}
+data_source <- "https://raw.githubusercontent.com/kjeannite/data-607/refs/heads/master/Project2/RawMedical/raw_medical.csv"
+
+medical_raw <- read.csv(data_source, check.names = FALSE, colClasses = "character")
+
+dim(medical_raw)
+head(medical_raw, 10)
+```
+
+There are `r nrow(medical_raw)` patients and `r sum(duplicated(medical_raw$Patient_ID))` duplicate patient IDs, so each row is a different patient.
+
+# Finding the Problem Values
+
+Like I did with the cafe data, I turned the table into a long format with one row per cell so I could count the problem values in every column at once. This file uses three different ways to show a missing value: a blank cell, the text `nan` (which is what Python writes for a missing value), and `N/A`.
+
+```{r problem-values}
+problem_counts <- medical_raw %>%
+  pivot_longer(cols = -Patient_ID, names_to = "column", values_to = "value") %>%
+  mutate(problem = case_when(
+    value == "" ~ "Blank",
+    value == "nan" ~ "nan",
+    value == "N/A" ~ "N/A",
+    TRUE ~ "OK"
+  )) %>%
+  count(column, problem) %>%
+  pivot_wider(names_from = problem, values_from = n, values_fill = 0) %>%
+  mutate(total_missing = Blank + nan + `N/A`) %>%
+  arrange(desc(total_missing))
+
+knitr::kable(problem_counts)
+```
+
+Since there are 100 rows, the missing counts are also the percentages. Notes is missing 43% of the time, and the other columns are missing between 14% and 21%. Admission Date is the only column with nothing missing.
+
+There are also inconsistent labels in the text columns:
+
+```{r labels}
+medical_raw %>% count(Gender)
+medical_raw %>% count(Smoker)
+medical_raw %>% count(Diagnosis)
+```
+
+- **Gender** has six versions: `Female`, `FEMALE`, `male`, `Male`, `MALE` and `nan`.
+- **Smoker** uses both `Y`/`N` and `Yes`/`No`, plus `nan`.
+- **Diagnosis** has both `None` and `nan`. These do not mean the same thing. `None` means the patient was checked and does not have heart disease or diabetes, while `nan` means we do not know the diagnosis.
+
+The numbers are also stored as text with a `.0` at the end, like `55.0`.
+
+# Cleaning the Data
+
+## Renaming and Fixing Missing Values
+
+I am renaming the columns to lowercase, and changing blank, `nan` and `N/A` to `NA`.
+
+```{r clean-na}
+medical <- medical_raw %>%
+  rename(
+    patient_id = Patient_ID,
+    age = Age,
+    gender = Gender,
+    blood_pressure = Blood_Pressure,
+    cholesterol = Cholesterol,
+    bmi = BMI,
+    smoker = Smoker,
+    diagnosis = Diagnosis,
+    admission_date = Admission_Date,
+    notes = Notes
+  ) %>%
+  mutate(across(everything(), ~ na_if(na_if(na_if(trimws(.x), ""), "nan"), "N/A")))
+```
+
+## Fixing the Labels and Types
+
+- For gender, I am comparing the lowercase version of each value, so all six versions become `Female`, `Male` or `NA`.
+- For smoker, `Y` becomes `Yes` and `N` becomes `No`. To answer Johnny's question, I am changing missing smoker values to `Unknown` instead of `NA`. If I dropped them, I would lose 20% of the patients when comparing smoking and diagnosis. If I guessed `No`, I would be making up data. Keeping `Unknown` as its own group lets me see whether those patients look different.
+- For diagnosis, I am renaming `None` to `No Diagnosis` so it is clear it is a real answer, and leaving the true missing values as `NA`.
+- The numbers and the date are converted to the correct types.
+
+```{r clean-labels}
+medical <- medical %>%
+  mutate(
+    gender = case_when(
+      tolower(gender) == "female" ~ "Female",
+      tolower(gender) == "male" ~ "Male"
+    ),
+    smoker = case_when(
+      smoker %in% c("Y", "Yes") ~ "Yes",
+      smoker %in% c("N", "No") ~ "No",
+      TRUE ~ "Unknown"
+    ),
+    diagnosis = if_else(diagnosis == "None", "No Diagnosis", diagnosis),
+    across(c(age, blood_pressure, cholesterol, bmi), as.numeric),
+    admission_date = as.Date(admission_date)
+  )
+
+medical %>% count(gender)
+medical %>% count(smoker)
+medical %>% count(diagnosis)
+```
+
+Now each column only has one spelling for each value.
+
+## What I Did Not Fill In
+
+With the cafe data I could fill in missing values using math between the columns. Here, there is no rule like that. Blood pressure, cholesterol and BMI are not calculated from each other, and filling them in with an average would make the groups look more alike than they are. So I am leaving them as `NA` and only dropping rows when a specific calculation needs that value.
+
+One more thing I noticed is that age, blood pressure, cholesterol and BMI each only have five possible values:
+
+```{r distinct-values}
+medical %>%
+  summarise(across(c(age, blood_pressure, cholesterol, bmi), ~ paste(sort(unique(na.omit(.x))), collapse = ", "))) %>%
+  pivot_longer(everything(), names_to = "column", values_to = "values") %>%
+  knitr::kable()
+```
+
+Real ages and BMIs would not look like this, so the data was probably generated by picking from a short list. This is good to keep in mind when reading the results.
+
+## Reshaping the Measurements
+
+To compare the four measurements across diagnoses, I am pivoting them into a long table with one row per patient and measurement. This lets me summarize and plot all four at once with `group_by()` and `facet_wrap()` instead of writing the same code four times.
+
+```{r pivot}
+medical_long <- medical %>%
+  pivot_longer(
+    cols = c(age, blood_pressure, cholesterol, bmi),
+    names_to = "measurement",
+    values_to = "value"
+  ) %>%
+  filter(!is.na(value))
+
+head(medical_long)
+```
+
+# Analysis
+
+## Measurements by Diagnosis
+
+For this part, I am only using patients with a known diagnosis.
+
+```{r by-diagnosis}
+measurement_summary <- medical_long %>%
+  filter(!is.na(diagnosis)) %>%
+  group_by(measurement, diagnosis) %>%
+  summarise(patients = n(), mean = round(mean(value), 1), .groups = "drop") %>%
+  pivot_wider(names_from = diagnosis, values_from = c(patients, mean))
+
+knitr::kable(measurement_summary)
+```
+
+```{r by-diagnosis-chart}
+medical_long %>%
+  filter(!is.na(diagnosis)) %>%
+  ggplot(aes(x = diagnosis, y = value, fill = diagnosis)) +
+  geom_boxplot(show.legend = FALSE) +
+  facet_wrap(~ measurement, scales = "free_y") +
+  labs(title = "Measurements by Diagnosis", x = NULL, y = NULL) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 20, hjust = 1))
+```
+
+The averages for each diagnosis are close together, and the boxplots overlap almost completely. So in this data, I do not see a real difference in age, blood pressure, cholesterol or BMI between patients with heart disease, diabetes or no diagnosis.
+
+## Smoking and Diagnosis
+
+Here I am comparing smoking status to diagnosis, including the `Unknown` smoker group.
+
+```{r smoking}
+smoking_table <- medical %>%
+  filter(!is.na(diagnosis)) %>%
+  count(smoker, diagnosis) %>%
+  group_by(smoker) %>%
+  mutate(percent = round(100 * n / sum(n), 1)) %>%
+  ungroup()
+
+smoking_table %>%
+  select(-n) %>%
+  pivot_wider(names_from = diagnosis, values_from = percent) %>%
+  knitr::kable()
+```
+
+```{r smoking-chart}
+ggplot(smoking_table, aes(x = smoker, y = n, fill = diagnosis)) +
+  geom_col(position = "fill") +
+  scale_y_continuous(labels = scales::percent) +
+  labs(title = "Diagnosis by Smoking Status", x = "Smoker", y = "Share of patients", fill = "Diagnosis") +
+  theme_minimal()
+```
+
+Every smoking group, including `Unknown`, has roughly a third of its patients in each diagnosis, so smokers are not more likely to have heart disease or diabetes in this data. Since the `Unknown` group looks the same as the others, this suggests the smoker values are missing at random and keeping them as their own group did not hide anything.
+
+# Conclusion
+
+Most of the work here was making the labels consistent. The file used three different ways to show a missing value (blank, `nan` and `N/A`), five spellings of gender, and two ways of writing yes and no for smoking. I changed all the missing markers to `NA`, made the labels consistent, kept `None` as a real diagnosis separate from missing, and kept unknown smokers as their own group instead of guessing. I then pivoted the four measurements into a long table so I could compare them all at once.
+
+For Tenzin's question, I did not find a relationship between age, blood pressure, cholesterol, BMI or smoking and the diagnosis. For example, the average blood pressure was about 138 for all three groups, and the boxplots for every measurement overlapped almost completely. Each smoking group, including `Unknown`, had roughly a third of its patients in each diagnosis.
+
+The biggest limitation is the size and the type of data. There are only 100 patients, and after removing missing diagnoses each group has under 30 people. Also, every measurement only has five possible values, which shows the data is synthetic and was probably filled in randomly. That would explain why nothing is related to the diagnosis. With real patient data, I would expect things like blood pressure and BMI to be higher for heart disease and diabetes patients.
