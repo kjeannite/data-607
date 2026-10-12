@@ -2232,6 +2232,7 @@ vertical-align: -.125em;
   <li><a href="#ownership-and-gas-collection" id="toc-ownership-and-gas-collection" class="nav-link" data-scroll-target="#ownership-and-gas-collection">Ownership and Gas Collection</a></li>
   </ul></li>
   <li><a href="#conclusion" id="toc-conclusion" class="nav-link" data-scroll-target="#conclusion">Conclusion</a></li>
+  <li><a href="#sources" id="toc-sources" class="nav-link" data-scroll-target="#sources">Sources</a></li>
   </ul>
 </nav>
 </div>
@@ -3187,6 +3188,13 @@ vertical-align: -.125em;
 <p>The biggest problem with this dataset was that each row mixed two different things, a landfill and a project. Splitting it into a landfills table and a projects table fixed the double counting, which would have inflated the total waste in place. I also changed blank and <code>Unknown</code> values to <code>NA</code>, and used <code>pivot_longer()</code> to turn the measurement and year pairs and the Yes/No activity columns into long tables.</p>
 <p>For Nicholas’s question about emissions by state, California has the most waste (about 2 billion tons) and the most emission reductions from operational projects (about 12.6 million tons of CO2 equivalent per year), with Texas and Pennsylvania close behind. About 90% of the reductions come from destroying methane directly, not from replacing fossil fuels. The 444 candidate landfills show that there is still room for more projects, especially in California, Georgia and Texas. Private landfills collect their gas more often than public ones (70% compared to 41%), but they are also much bigger.</p>
 <p>One limitation is that the measurements were taken in different years, and many have no year at all, so the state totals mix older and newer numbers. A lot of the gas and size columns are also missing for more than half of the landfills, so I stuck to the columns that are mostly filled in. Finally, the EPA says the database does not include every landfill in the country, so these totals are a lower bound.</p>
+</section>
+<section id="sources" class="level1">
+<h1>Sources</h1>
+<ul>
+<li>Dataset: <a href="https://www.epa.gov/lmop/lmop-landfill-and-project-database#access">LMOP Landfill and Project Database</a>, U.S. Environmental Protection Agency.</li>
+<li>Claude (Anthropic) was used to help with the code and the write-up.</li>
+</ul>
 </section>
 
 </main>

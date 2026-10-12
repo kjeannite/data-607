@@ -2228,6 +2228,7 @@ vertical-align: -.125em;
   <li><a href="#smoking-and-diagnosis" id="toc-smoking-and-diagnosis" class="nav-link" data-scroll-target="#smoking-and-diagnosis">Smoking and Diagnosis</a></li>
   </ul></li>
   <li><a href="#conclusion" id="toc-conclusion" class="nav-link" data-scroll-target="#conclusion">Conclusion</a></li>
+  <li><a href="#sources" id="toc-sources" class="nav-link" data-scroll-target="#sources">Sources</a></li>
   </ul>
 </nav>
 </div>
@@ -2763,6 +2764,13 @@ vertical-align: -.125em;
 <p>Most of the work here was making the labels consistent. The file used three different ways to show a missing value (blank, <code>nan</code> and <code>N/A</code>), five spellings of gender, and two ways of writing yes and no for smoking. I changed all the missing markers to <code>NA</code>, made the labels consistent, kept <code>None</code> as a real diagnosis separate from missing, and kept unknown smokers as their own group instead of guessing. I then pivoted the four measurements into a long table so I could compare them all at once.</p>
 <p>For Tenzin’s question, I did not find a relationship between age, blood pressure, cholesterol, BMI or smoking and the diagnosis. For example, the average blood pressure was about 138 for all three groups, and the boxplots for every measurement overlapped almost completely. Each smoking group, including <code>Unknown</code>, had roughly a third of its patients in each diagnosis.</p>
 <p>The biggest limitation is the size and the type of data. There are only 100 patients, and after removing missing diagnoses each group has under 30 people. Also, every measurement only has five possible values, which shows the data is synthetic and was probably filled in randomly. That would explain why nothing is related to the diagnosis. With real patient data, I would expect things like blood pressure and BMI to be higher for heart disease and diabetes patients.</p>
+</section>
+<section id="sources" class="level1">
+<h1>Sources</h1>
+<ul>
+<li>Dataset: <a href="https://www.kaggle.com/datasets/aamir5659/raw-medical-dataset-for-cleaning-practice">Raw Medical Dataset for Cleaning Practice</a>, Kaggle.</li>
+<li>Claude (Anthropic) was used to help with the code and the write-up.</li>
+</ul>
 </section>
 
 </main>

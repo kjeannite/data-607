@@ -227,3 +227,8 @@ Most of the work here was making the labels consistent. The file used three diff
 For Tenzin's question, I did not find a relationship between age, blood pressure, cholesterol, BMI or smoking and the diagnosis. For example, the average blood pressure was about 138 for all three groups, and the boxplots for every measurement overlapped almost completely. Each smoking group, including `Unknown`, had roughly a third of its patients in each diagnosis.
 
 The biggest limitation is the size and the type of data. There are only 100 patients, and after removing missing diagnoses each group has under 30 people. Also, every measurement only has five possible values, which shows the data is synthetic and was probably filled in randomly. That would explain why nothing is related to the diagnosis. With real patient data, I would expect things like blood pressure and BMI to be higher for heart disease and diabetes patients.
+
+# Sources
+
+- Dataset: [Raw Medical Dataset for Cleaning Practice](https://www.kaggle.com/datasets/aamir5659/raw-medical-dataset-for-cleaning-practice), Kaggle.
+- Claude (Anthropic) was used to help with the code and the write-up.

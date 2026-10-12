@@ -255,3 +255,8 @@ Most of the work on this dataset was cleaning. By noticing that every item alway
 For the analysis, the payment methods were split almost evenly, every item sold about the same number of units, and Salad brought in the most money because it has the highest price. Average spending was about the same across payment methods and locations.
 
 One limitation is that I could not fill in payment method, location or date, since nothing else in the row tells me what they should be. About 40% of the locations are missing, so the location results are based on a smaller part of the data. Also, because the data is synthetic, the patterns are much more even than I would expect from a real cafe.
+
+# Sources
+
+- Dataset: [Dirty Cafe Sales](https://www.kaggle.com/datasets/ahmedmohamed2003/cafe-sales-dirty-data-for-cleaning-training/data), Kaggle.
+- Claude (Anthropic) was used to help with the code and the write-up.

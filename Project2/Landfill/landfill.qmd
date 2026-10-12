@@ -353,3 +353,8 @@ The biggest problem with this dataset was that each row mixed two different thin
 For Nicholas's question about emissions by state, California has the most waste (about 2 billion tons) and the most emission reductions from operational projects (about 12.6 million tons of CO2 equivalent per year), with Texas and Pennsylvania close behind. About 90% of the reductions come from destroying methane directly, not from replacing fossil fuels. The 444 candidate landfills show that there is still room for more projects, especially in California, Georgia and Texas. Private landfills collect their gas more often than public ones (70% compared to 41%), but they are also much bigger.
 
 One limitation is that the measurements were taken in different years, and many have no year at all, so the state totals mix older and newer numbers. A lot of the gas and size columns are also missing for more than half of the landfills, so I stuck to the columns that are mostly filled in. Finally, the EPA says the database does not include every landfill in the country, so these totals are a lower bound.
+
+# Sources
+
+- Dataset: [LMOP Landfill and Project Database](https://www.epa.gov/lmop/lmop-landfill-and-project-database#access), U.S. Environmental Protection Agency.
+- Claude (Anthropic) was used to help with the code and the write-up.
