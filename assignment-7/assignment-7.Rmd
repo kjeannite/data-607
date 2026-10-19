@@ -1,0 +1,141 @@
+---
+title: "Week 7: HTML and JSON"
+author: "Kenny Jeannite"
+date: "2026-10-18"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+library(dplyr)
+library(rvest)
+library(jsonlite)
+```
+
+# Introduction
+
+For this assignment, I picked three books about working with data in R. Each one covers a different part of a data science project:
+
+| Title | Authors | Year | Publisher | Topic |
+|---|---|---|---|---|
+| R for Data Science (2nd ed.) | Hadley Wickham, Mine Çetinkaya-Rundel, Garrett Grolemund | 2023 | O'Reilly | Data wrangling |
+| Automated Data Collection with R | Simon Munzert, Christian Rubba, Peter Meißner, Dominic Nyhuis | 2015 | Wiley | Web scraping / APIs |
+| Storytelling with Data | Cole Nussbaumer Knaflic | 2015 | Wiley | Visualization |
+
+Two of the books have more than one author, which is the tricky part of this assignment. For each book I am storing the title, the authors, and three other attributes: the year it was published, the publisher and the topic.
+
+I wrote the same information by hand in two files:
+
+- [`books.html`](https://raw.githubusercontent.com/kjeannite/data-607/refs/heads/master/assignment-7/books.html): an HTML table with one row per book. HTML table cells can only hold text, so I put all of the authors in one cell separated by semicolons. I used semicolons instead of commas in case an author's name ever has a comma in it, like "Jr.".
+- [`books.json`](https://raw.githubusercontent.com/kjeannite/data-607/refs/heads/master/assignment-7/books.json): each book is an object, and `authors` is an array. The year is written as a number with no quotes.
+
+The question is whether loading these two files into R gives two identical data frames.
+
+# Loading the HTML File
+
+I am using `rvest` to read the page and `html_table()` to turn the table into a data frame.
+
+```{r load-html}
+html_url <- "https://raw.githubusercontent.com/kjeannite/data-607/refs/heads/master/assignment-7/books.html"
+
+books_html <- read_html(html_url) %>%
+  html_element("table#books") %>%
+  html_table()
+
+books_html
+str(books_html)
+```
+
+`html_table()` kept the column names exactly as they are in the header, with capital letters. It also noticed that the Year column only has numbers in it and converted it to an integer on its own. The authors are still one string per book.
+
+# Loading the JSON File
+
+`jsonlite::fromJSON()` turns the JSON array of books into a data frame on its own.
+
+```{r load-json}
+json_url <- "https://raw.githubusercontent.com/kjeannite/data-607/refs/heads/master/assignment-7/books.json"
+
+books_json <- fromJSON(json_url)$books
+
+books_json
+str(books_json)
+```
+
+Because the year has no quotes in the JSON file, it came in as an integer. The authors came in as a **list column**, where each cell holds a vector of names. The first book has 3 authors, the second has 4 and the third has 1.
+
+# Are the Two Data Frames Identical?
+
+```{r compare-raw}
+identical(books_html, books_json)
+```
+
+No, they are not identical. Here is a side by side look at the differences:
+
+```{r differences}
+data.frame(
+  file = c("HTML", "JSON"),
+  r_class = c(class(books_html)[1], class(books_json)[1]),
+  column_names = c(paste(names(books_html), collapse = ", "),
+                   paste(names(books_json), collapse = ", ")),
+  year_type = c(class(books_html$Year), class(books_json$year)),
+  authors_type = c(class(books_html$Authors), class(books_json$authors))
+) %>%
+  knitr::kable()
+```
+
+The information is the same in both, but the structure is different:
+
+- **Data frame type:** `html_table()` returns a tibble, while the JSON one is a regular data frame.
+- **Column names:** the HTML ones are capitalized because that is how I wrote the table header.
+- **Authors:** one string from HTML, but a list column from JSON.
+
+Each of these is caused by the file format, not by the data. HTML tables only store text, while JSON has real numbers and arrays.
+
+# Making Them Match
+
+To check that the actual content is the same, I wrote one function that puts either one into the same format: a regular data frame, lowercase column names, an integer year, and the authors joined into one string.
+
+```{r standardize}
+standardize_books <- function(df) {
+  df <- as.data.frame(df)
+  names(df) <- tolower(names(df))
+  if (is.list(df$authors)) {
+    df$authors <- sapply(df$authors, paste, collapse = "; ")
+  }
+  df$year <- as.integer(df$year)
+  df
+}
+
+html_clean <- standardize_books(books_html)
+json_clean <- standardize_books(books_json)
+
+identical(html_clean, json_clean)
+
+html_clean
+```
+
+After standardizing, the two are identical. This also shows that the special characters in "Çetinkaya-Rundel" and "Meißner" came through the same way from both files, since I saved each one as UTF-8.
+
+# A Tidy Version
+
+Joining the authors into one string makes the data frames easy to compare, but it is not tidy, since one cell holds several values. The JSON list column makes it easy to fix this with `tidyr::unnest()`, giving one row per book and author:
+
+```{r tidy}
+book_authors <- books_json %>%
+  tidyr::unnest(authors) %>%
+  select(title, author = authors)
+
+book_authors
+
+book_authors %>% count(title, name = "number_of_authors")
+```
+
+# Conclusion
+
+The two data frames were **not** identical when I first loaded them, even though I typed the same information into both files. The differences came from the formats themselves. HTML stores everything as text, so the authors have to be handled by hand. JSON keeps numbers as numbers and lists as lists, so it was the easiest to load and kept the most structure. After converting both to the same format, they matched exactly.
+
+The hardest part was the books with several authors. The two formats handle a list differently: a separator inside one cell for HTML and an array for JSON. If I were picking a format to share this data, I would pick JSON because it keeps the authors as a real list.
+
+# Sources
+
+- Claude (Anthropic) was used to help with the code and find packages usable for the format.
