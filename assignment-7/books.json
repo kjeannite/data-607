@@ -1,0 +1,25 @@
+{
+  "books": [
+    {
+      "title": "R for Data Science (2nd ed.)",
+      "authors": ["Hadley Wickham", "Mine Çetinkaya-Rundel", "Garrett Grolemund"],
+      "year": 2023,
+      "publisher": "O'Reilly",
+      "topic": "Data wrangling"
+    },
+    {
+      "title": "Automated Data Collection with R",
+      "authors": ["Simon Munzert", "Christian Rubba", "Peter Meißner", "Dominic Nyhuis"],
+      "year": 2015,
+      "publisher": "Wiley",
+      "topic": "Web scraping / APIs"
+    },
+    {
+      "title": "Storytelling with Data",
+      "authors": ["Cole Nussbaumer Knaflic"],
+      "year": 2015,
+      "publisher": "Wiley",
+      "topic": "Visualization"
+    }
+  ]
+}
