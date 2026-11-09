@@ -1,0 +1,1 @@
+I will use the Nobel Prize API to pull the laureate and prize data in JSON format, then load it into R with jsonlite and turn it into tidy data frames. I will come up with four questions to answer from the data, with at least one that requires joining, filtering, or comparing fields. For each question, I will describe it, show the code, and present the answer as a table or plot.

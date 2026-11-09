@@ -1,0 +1,332 @@
+---
+title: "Assignment 10B: Nobel Prize JSON"
+author: "Kenny Jeannite"
+date: "2026-11-07"
+format:
+  html:
+    toc: true
+    embed-resources: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+library(jsonlite)
+library(dplyr)
+library(tidyr)
+library(purrr)
+library(ggplot2)
+library(knitr)
+```
+
+# Introduction
+
+For this assignment, I am using the free [Nobel Prize API](https://www.nobelprize.org/about/developer-zone-2/) (version 2.1) to get data on every Nobel laureate in JSON format. I am using the laureates endpoint, which returns one record per laureate. Each record has the laureate's birth details and a list of every prize they won, and each prize has its own list of affiliations, meaning the university or institute where they did the work.
+
+I am loading the JSON into R, turning it into tidy data frames, and then using them to answer four questions:
+
+1. Which prize categories are shared the most, and has sharing changed over time?
+2. How old are laureates when they win, and has that changed?
+3. How many women have won in each category, and in which decades?
+4. Which countries "lost" the most laureates, meaning the laureate was born there but did the prize-winning work in another country?
+
+The last question needs more than counting. I have to join the birth country and the affiliation country for each laureate, compare them and keep only the cases where they don't match.
+
+# Getting the JSON Data
+
+The API only returns as many records as the `limit` in the URL, so I set it higher than the total number of laureates to get everything in one request. I am using `simplifyVector = FALSE` so `fromJSON()` keeps the nested lists the way they are in the JSON instead of trying to turn them into a data frame on its own.
+
+```{r get-data}
+url <- "https://api.nobelprize.org/2.1/laureates?limit=2000"
+raw <- fromJSON(url, simplifyVector = FALSE)
+
+laureates_json <- raw$laureates
+
+# Total laureates the API says it has, and how many I actually got
+raw$meta$count
+length(laureates_json)
+```
+
+Here is what one record looks like at the top level:
+
+```{r peek}
+str(laureates_json[[1]], max.level = 1)
+```
+
+Most text fields are stored once for each language (`en`, `se` and `no`), and a lot of fields are missing for some laureates. For example, organizations like the Red Cross don't have a birth date or gender. Here I am writing a small function that pulls out a value and returns `NA` if it isn't there.
+
+```{r helper}
+# Get a nested value, or NA if any part of the path is missing
+get_chr <- function(x, ...) {
+  val <- pluck(x, ..., .default = NA_character_)
+  if (is.null(val)) NA_character_ else as.character(val)
+}
+```
+
+A few places are listed separately from the country they belong to, like Scotland. I am merging them so a laureate born in Scotland who worked in England doesn't count as moving to another country in Question 4.
+
+```{r fix-country}
+fix_country <- function(x) {
+  case_when(
+    x %in% c("Scotland", "Northern Ireland") ~ "United Kingdom",
+    x == "Faroe Islands (Denmark)"            ~ "Denmark",
+    x == "Guadeloupe, France"                 ~ "France",
+    TRUE                                      ~ x
+  )
+}
+```
+
+# Tidying the JSON
+
+The JSON has three levels: laureates, their prizes and the affiliations for each prize. I am making one tidy data frame for each level.
+
+## Laureates
+
+This table has one row per laureate.
+
+```{r tidy-laureates}
+laureates <- map_dfr(laureates_json, function(l) {
+  tibble(
+    id            = get_chr(l, "id"),
+    # people have a knownName and organizations have an orgName
+    name          = coalesce(get_chr(l, "knownName", "en"), get_chr(l, "orgName", "en")),
+    type          = if (is.null(l$orgName)) "Person" else "Organization",
+    gender        = get_chr(l, "gender"),
+    birth_date    = get_chr(l, "birth", "date"),
+    birth_country = fix_country(get_chr(l, "birth", "place", "countryNow", "en"))
+  )
+})
+
+head(laureates) %>% kable()
+```
+
+## Prizes
+
+This table has one row per laureate per prize, since a few people, like Marie Curie, won twice.
+
+```{r tidy-prizes}
+prizes <- map_dfr(laureates_json, function(l) {
+  map_dfr(l$nobelPrizes, function(p) {
+    tibble(
+      id         = get_chr(l, "id"),
+      award_year = as.integer(get_chr(p, "awardYear")),
+      category   = get_chr(p, "category", "en"),
+      portion    = get_chr(p, "portion"),
+      status     = get_chr(p, "prizeStatus")
+    )
+  })
+})
+
+head(prizes) %>% kable()
+```
+
+## Affiliations
+
+This table has one row per laureate, per prize, per affiliation.
+
+```{r tidy-affiliations}
+affiliations <- map_dfr(laureates_json, function(l) {
+  map_dfr(l$nobelPrizes, function(p) {
+    map_dfr(p$affiliations, function(a) {
+      tibble(
+        id          = get_chr(l, "id"),
+        award_year  = as.integer(get_chr(p, "awardYear")),
+        category    = get_chr(p, "category", "en"),
+        affiliation = get_chr(a, "nameNow", "en"),
+        aff_country = fix_country(get_chr(a, "countryNow", "en"))
+      )
+    })
+  })
+})
+
+head(affiliations) %>% kable()
+```
+
+```{r sizes}
+tibble(
+  table = c("laureates", "prizes", "affiliations"),
+  rows  = c(nrow(laureates), nrow(prizes), nrow(affiliations))
+) %>%
+  kable()
+```
+
+All three tables have the `id` column, so I can join them whenever a question needs information from more than one level.
+
+# Question 1: Which Categories Are Shared the Most?
+
+A Nobel Prize can be split between up to three laureates. I want to know which categories are shared the most and whether sharing has become more common over time.
+
+To count prizes instead of laureates, I am treating each category and year as one prize and counting how many laureates it had.
+
+```{r q1}
+prize_sizes <- prizes %>%
+  count(category, award_year, name = "n_laureates")
+
+prize_sizes %>%
+  group_by(category) %>%
+  summarise(
+    prizes        = n(),
+    avg_laureates = round(mean(n_laureates), 2),
+    pct_shared    = round(100 * mean(n_laureates > 1), 1)
+  ) %>%
+  arrange(desc(pct_shared)) %>%
+  kable(col.names = c("Category", "Prizes", "Avg. laureates per prize", "% shared"))
+```
+
+Here I am graphing the average number of laureates per prize in each decade.
+
+```{r q1-plot, fig.width=8, fig.height=4.5}
+prize_sizes %>%
+  mutate(decade = award_year %/% 10 * 10) %>%
+  group_by(category, decade) %>%
+  summarise(avg_laureates = mean(n_laureates), .groups = "drop") %>%
+  ggplot(aes(x = decade, y = avg_laureates, color = category)) +
+  geom_line(linewidth = 1) +
+  labs(title = "Average Laureates per Prize by Decade",
+       x = "Decade", y = "Laureates per prize", color = "Category")
+```
+
+Physiology or Medicine is shared the most, with about 66% of its prizes going to more than one person, followed by Physics at 60%. Literature is almost never shared, at only about 3%. The graph shows sharing in the sciences going up over time, from about one laureate per prize in the early 1900s to about two and a half in the 2000s and 2010s. That makes sense because big discoveries in science today usually come from teams instead of one person.
+
+# Question 2: How Old Are Laureates When They Win?
+
+Here I want to find the typical age of a laureate when they win in each category, and see if it has changed over time.
+
+Age isn't in the JSON, so I am calculating it by joining `prizes` (the award year) to `laureates` (the birth date). Organizations don't have a birth date, so they are left out.
+
+```{r q2}
+ages <- prizes %>%
+  inner_join(laureates, by = "id") %>%
+  filter(type == "Person", !is.na(birth_date)) %>%
+  mutate(
+    birth_year = as.integer(substr(birth_date, 1, 4)),
+    age        = award_year - birth_year
+  ) %>%
+  # a few records only have "0000" as the birth year
+  filter(birth_year > 0)
+
+ages %>%
+  group_by(category) %>%
+  summarise(
+    laureates  = n(),
+    median_age = median(age),
+    youngest   = min(age),
+    oldest     = max(age)
+  ) %>%
+  arrange(median_age) %>%
+  kable(col.names = c("Category", "Laureates", "Median age", "Youngest", "Oldest"))
+```
+
+```{r q2-plot, fig.width=8, fig.height=4.5}
+ggplot(ages, aes(x = award_year, y = age)) +
+  geom_point(alpha = 0.3) +
+  geom_smooth(method = "loess", se = FALSE, color = "firebrick") +
+  facet_wrap(~ category) +
+  labs(title = "Age When Winning the Prize", x = "Award year", y = "Age")
+```
+
+Here are the youngest and oldest laureates:
+
+```{r q2-extremes}
+bind_rows(slice_min(ages, age, n = 1), slice_max(ages, age, n = 1)) %>%
+  select(name, category, award_year, age) %>%
+  kable(col.names = c("Name", "Category", "Year", "Age"))
+```
+
+Physics has the youngest median age at 56, and Economic Sciences and Literature have the oldest at 67. The red lines show winners in the science categories getting older over the last century. Across all categories, the median age went from 56 for prizes before 1930 to 68 for prizes since 2000. Part of the reason is that people often wait decades between making a discovery and getting the prize for it. The youngest laureate is Malala Yousafzai, who won the Peace Prize in 2014 at 17. The oldest is John B. Goodenough, who won the Chemistry Prize in 2019 at 97.
+
+# Question 3: How Many Women Have Won?
+
+Here I want to see how many women have won in each category and how that has changed by decade. I am keeping only people from `laureates` and joining them to `prizes` to get the category and year.
+
+```{r q3}
+people_prizes <- prizes %>%
+  inner_join(laureates, by = "id") %>%
+  filter(type == "Person")
+
+people_prizes %>%
+  group_by(category) %>%
+  summarise(
+    women     = sum(gender == "female", na.rm = TRUE),
+    total     = n(),
+    pct_women = round(100 * women / total, 1)
+  ) %>%
+  arrange(desc(pct_women)) %>%
+  kable(col.names = c("Category", "Women", "Total laureates", "% women"))
+```
+
+```{r q3-plot, fig.width=8, fig.height=4.5}
+people_prizes %>%
+  filter(gender == "female") %>%
+  mutate(decade = award_year %/% 10 * 10) %>%
+  count(decade, category) %>%
+  ggplot(aes(x = factor(decade), y = n, fill = category)) +
+  geom_col() +
+  labs(title = "Women Nobel Laureates by Decade", x = "Decade",
+       y = "Number of women", fill = "Category") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+Women have won only 70 of the prizes given to people. Peace (about 19%) and Literature (about 15%) have the highest share of women. Physics has the lowest at about 2%, with Economic Sciences and Chemistry not much higher. The graph shows that most of the change is recent. 40 of the 70 prizes won by women, or about 57%, have come since 2000. The 2020s already have 16, more than any earlier decade, and the decade isn't even over yet.
+
+# Question 4: Which Countries Lost the Most Laureates?
+
+For this question, I want to find which countries "lost" the most laureates, meaning the laureate was born there but won for work done at a university or institute in another country.
+
+The API doesn't have citizenship, so I am using the affiliation country (where they did the prize-winning work) and comparing it to the birth country. I am using the modern country name (`countryNow`) for both, so borders that changed over time don't cause false matches.
+
+I am only keeping laureates who have a birth country and at least one affiliation, which is mostly the science and economics laureates. If a laureate has more than one affiliation, they only count as leaving if none of their affiliations were in their birth country.
+
+```{r q4}
+moves <- affiliations %>%
+  filter(!is.na(aff_country)) %>%
+  inner_join(laureates %>% select(id, name, birth_country), by = "id") %>%
+  filter(!is.na(birth_country)) %>%
+  group_by(id, name, award_year, category, birth_country) %>%
+  summarise(
+    # TRUE if any affiliation was in the birth country
+    stayed       = any(aff_country == birth_country),
+    work_country = first(aff_country),
+    .groups = "drop"
+  )
+
+lost <- moves %>%
+  filter(!stayed) %>%
+  count(birth_country, name = "laureates_lost", sort = TRUE)
+
+head(lost, 10) %>% kable(col.names = c("Birth country", "Laureates lost"))
+```
+
+```{r q4-plot, fig.width=8, fig.height=4.5}
+head(lost, 10) %>%
+  ggplot(aes(x = reorder(birth_country, laureates_lost), y = laureates_lost)) +
+  geom_col(fill = "steelblue") +
+  coord_flip() +
+  labs(title = "Countries That Lost the Most Nobel Laureates",
+       subtitle = "Born in the country, but did the prize-winning work somewhere else",
+       x = NULL, y = "Laureates")
+```
+
+Here I am checking where those laureates went by counting the country they worked in.
+
+```{r q4-destinations}
+moves %>%
+  filter(!stayed) %>%
+  count(work_country, name = "laureates_gained", sort = TRUE) %>%
+  head(5) %>%
+  kable(col.names = c("Country they worked in", "Laureates"))
+```
+
+Of the 764 prizes I could check, 235 were won by someone working outside the country they were born in. The United Kingdom (26) and Germany (25) lost the most laureates, followed by Poland (19), Canada (15) and France (13). The second table shows that most of them went to the United States, which gained 134 laureates this way, far more than any other country. This fits with history. Many scientists left Europe before and after World War II, and later a lot of researchers moved to American universities for the funding and jobs.
+
+# Conclusion
+
+The Nobel Prize JSON is very nested, with laureates holding prizes and prizes holding affiliations. Most of the work was turning it into three tidy tables that share an `id`. Once that was done, each question only took a join, a filter and a summary.
+
+The results showed that science prizes have become team efforts and that laureates are winning later in life than they used to. Women are still a small share of winners, but more than half of the prizes won by women have come since 2000. Comparing birth and work countries showed a big flow of laureates out of Europe and into the United States.
+
+One limitation is that the API doesn't have citizenship, so for Question 4 I used where the laureate worked instead. A laureate who moved but kept their original citizenship still counts as "lost" here. The data also only goes through the most recent prizes, so the 2020s numbers will keep changing.
+
+# Sources
+
+- [Nobel Prize API, version 2.1](https://www.nobelprize.org/about/developer-zone-2/) from Nobel Prize Outreach. The data was pulled in November 2026 from <https://api.nobelprize.org/2.1/laureates>.
+- Claude (Anthropic) was used to help with the code and with writing up the results.

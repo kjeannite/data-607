@@ -1,0 +1,563 @@
+---
+title: "Assignment 10A: Sentiment Analysis"
+author: "Kenny Jeannite"
+date: "2026-11-07"
+format:
+  html:
+    toc: true
+    embed-resources: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+library(tidytext)
+library(janeaustenr)
+library(gutenbergr)
+library(syuzhet)
+library(dplyr)
+library(tidyr)
+library(stringr)
+library(ggplot2)
+library(wordcloud)
+library(reshape2)
+```
+
+# Introduction
+
+For this assignment, I am reproducing the sentiment analysis example from Chapter 2 of *Text Mining with R* by Julia Silge and David Robinson. In the chapter, they split Jane Austen's six novels into one word per row, join the words to a sentiment lexicon and add up the scores to see how the mood of each book changes from beginning to end.
+
+After that, I am extending the example in two ways. I am running the same steps on a different set of books, four Sherlock Holmes novels by Arthur Conan Doyle, and I am adding two lexicons that are not in the chapter: Loughran-McDonald and Syuzhet.
+
+The main question I want to answer is: do the lexicons pick up the difference between Austen's love stories and Doyle's murder mysteries, and do they agree with each other?
+
+**Note:** AFINN, NRC and Loughran-McDonald are downloaded by the `textdata` package the first time they are used, and each one asks you to accept its license. That only works in the R console, so before rendering this file, run these lines once and type `1` (Yes) at each prompt:
+
+```{r download-lexicons, eval=FALSE}
+get_sentiments("afinn")
+get_sentiments("nrc")
+get_sentiments("loughran")
+```
+
+# Part 1: Reproducing the Chapter 2 Example
+
+All of the code in this part comes from [Chapter 2 of *Text Mining with R*](https://www.tidytextmining.com/sentiment.html). The original code is in the book's [GitHub repository](https://github.com/dgrtwo/tidy-text-mining) in the file `02-sentiment-analysis.Rmd`. I only made small changes so it runs with the current package versions.
+
+## The Sentiment Lexicons
+
+The chapter uses three lexicons. AFINN gives each word a score from -5 to +5. Bing labels each word as positive or negative. NRC labels words as positive or negative and also tags them with eight emotions, like joy, fear and anger.
+
+```{r lexicons}
+get_sentiments("afinn")
+get_sentiments("bing")
+get_sentiments("nrc")
+```
+
+## Tidying the Austen Novels
+
+Here I am splitting each novel into one word per row. I am also keeping the line number and chapter for each word so I can tell where in the book it appears.
+
+```{r tidy-books}
+tidy_books <- austen_books() %>%
+  group_by(book) %>%
+  mutate(
+    linenumber = row_number(),
+    chapter = cumsum(str_detect(text,
+                                regex("^chapter [\\divxlc]",
+                                      ignore_case = TRUE)))) %>%
+  ungroup() %>%
+  unnest_tokens(word, text)
+```
+
+The first example in the chapter finds the most common joy words in *Emma* using NRC.
+
+```{r emma-joy}
+nrc_joy <- get_sentiments("nrc") %>%
+  filter(sentiment == "joy")
+
+tidy_books %>%
+  filter(book == "Emma") %>%
+  inner_join(nrc_joy) %>%
+  count(word, sort = TRUE)
+```
+
+## Sentiment Across Each Book
+
+Here I am using Bing to score each 80-line section of each book. The score is the number of positive words minus the number of negative words.
+
+```{r austen-sentiment}
+jane_austen_sentiment <- tidy_books %>%
+  inner_join(get_sentiments("bing")) %>%
+  count(book, index = linenumber %/% 80, sentiment) %>%
+  pivot_wider(names_from = sentiment, values_from = n, values_fill = 0) %>%
+  mutate(sentiment = positive - negative)
+```
+
+```{r austen-plot, fig.width=9, fig.height=7}
+ggplot(jane_austen_sentiment, aes(index, sentiment, fill = book)) +
+  geom_col(show.legend = FALSE) +
+  facet_wrap(~book, ncol = 2, scales = "free_x")
+```
+
+Most of the bars are above zero, so Austen's novels lean positive, with dips where something goes wrong in the story.
+
+## Comparing the Three Lexicons
+
+Next the chapter scores *Pride and Prejudice* with all three lexicons to see how they compare.
+
+```{r pride-prejudice}
+pride_prejudice <- tidy_books %>%
+  filter(book == "Pride & Prejudice")
+
+afinn <- pride_prejudice %>%
+  inner_join(get_sentiments("afinn")) %>%
+  group_by(index = linenumber %/% 80) %>%
+  summarise(sentiment = sum(value)) %>%
+  mutate(method = "AFINN")
+
+bing_and_nrc <- bind_rows(
+  pride_prejudice %>%
+    inner_join(get_sentiments("bing")) %>%
+    mutate(method = "Bing et al."),
+  pride_prejudice %>%
+    inner_join(get_sentiments("nrc") %>%
+                 filter(sentiment %in% c("positive",
+                                         "negative"))
+    ) %>%
+    mutate(method = "NRC")) %>%
+  count(method, index = linenumber %/% 80, sentiment) %>%
+  pivot_wider(names_from = sentiment,
+              values_from = n,
+              values_fill = 0) %>%
+  mutate(sentiment = positive - negative)
+```
+
+```{r compare-plot, fig.width=9, fig.height=6}
+bind_rows(afinn,
+          bing_and_nrc) %>%
+  ggplot(aes(index, sentiment, fill = method)) +
+  geom_col(show.legend = FALSE) +
+  facet_wrap(~method, ncol = 1, scales = "free_y")
+```
+
+All three go up and down in the same places, but at different levels. AFINN has the biggest swings, Bing is the lowest and NRC is the most positive. Part of the reason is how many positive and negative words are in each lexicon:
+
+```{r lexicon-counts}
+get_sentiments("nrc") %>%
+  filter(sentiment %in% c("positive", "negative")) %>%
+  count(sentiment)
+
+get_sentiments("bing") %>%
+  count(sentiment)
+```
+
+Bing has a lot more negative words compared to positive words than NRC does, so it scores the same text as more negative.
+
+## Most Common Positive and Negative Words
+
+Here I am counting how much each word adds to the positive or negative side.
+
+```{r bing-word-counts}
+bing_word_counts <- tidy_books %>%
+  inner_join(get_sentiments("bing")) %>%
+  count(word, sentiment, sort = TRUE) %>%
+  ungroup()
+
+bing_word_counts
+```
+
+```{r bing-word-plot, fig.width=8, fig.height=4.5}
+bing_word_counts %>%
+  group_by(sentiment) %>%
+  slice_max(n, n = 10) %>%
+  ungroup() %>%
+  mutate(word = reorder(word, n)) %>%
+  ggplot(aes(n, word, fill = sentiment)) +
+  geom_col(show.legend = FALSE) +
+  facet_wrap(~sentiment, scales = "free_y") +
+  labs(x = "Contribution to sentiment",
+       y = NULL)
+```
+
+"Miss" is the top negative word, but in Austen it is almost always a title, like "Miss Bennet," and not a bad feeling. The chapter fixes this by adding it to a custom stop word list.
+
+```{r custom-stop-words}
+custom_stop_words <- bind_rows(tibble(word = c("miss"),
+                                      lexicon = c("custom")),
+                               stop_words)
+
+custom_stop_words
+```
+
+## Wordclouds
+
+```{r wordcloud, fig.width=6, fig.height=6}
+tidy_books %>%
+  anti_join(stop_words) %>%
+  count(word) %>%
+  with(wordcloud(word, n, max.words = 100))
+```
+
+```{r comparison-cloud, fig.width=6, fig.height=6}
+tidy_books %>%
+  inner_join(get_sentiments("bing")) %>%
+  count(word, sentiment, sort = TRUE) %>%
+  acast(word ~ sentiment, value.var = "n", fill = 0) %>%
+  comparison.cloud(colors = c("gray20", "gray80"),
+                   max.words = 100)
+```
+
+## Looking at Sentences and Chapters
+
+The text can also be split into sentences or chapters instead of single words.
+
+```{r sentences}
+p_and_p_sentences <- tibble(text = prideprejudice) %>%
+  unnest_tokens(sentence, text, token = "sentences")
+
+p_and_p_sentences$sentence[2]
+```
+
+```{r chapters}
+austen_chapters <- austen_books() %>%
+  group_by(book) %>%
+  unnest_tokens(chapter, text, token = "regex",
+                pattern = "Chapter|CHAPTER [\\dIVXLC]") %>%
+  ungroup()
+
+austen_chapters %>%
+  group_by(book) %>%
+  summarise(chapters = n())
+```
+
+The last example finds the chapter in each book with the highest share of negative words.
+
+```{r negative-chapters}
+bingnegative <- get_sentiments("bing") %>%
+  filter(sentiment == "negative")
+
+wordcounts <- tidy_books %>%
+  group_by(book, chapter) %>%
+  summarize(words = n())
+
+tidy_books %>%
+  semi_join(bingnegative) %>%
+  group_by(book, chapter) %>%
+  summarize(negativewords = n()) %>%
+  left_join(wordcounts, by = c("book", "chapter")) %>%
+  mutate(ratio = negativewords/words) %>%
+  filter(chapter != 0) %>%
+  slice_max(ratio, n = 1) %>%
+  ungroup()
+```
+
+# Part 2: Extending the Analysis
+
+## Loading the Sherlock Holmes Novels
+
+For the new set of books, I picked the four Sherlock Holmes novels and downloaded them from Project Gutenberg with the `gutenbergr` package. Austen and Doyle both wrote in English in the 1800s, but Austen writes about courtship and manners while Doyle writes about murder. That should make it easy to see if the lexicons notice the difference.
+
+| Gutenberg ID | Title | Published |
+|---|---|---|
+| 244 | A Study in Scarlet | 1887 |
+| 2097 | The Sign of the Four | 1890 |
+| 2852 | The Hound of the Baskervilles | 1902 |
+| 3289 | The Valley of Fear | 1915 |
+
+```{r holmes-download}
+holmes_raw <- gutenberg_download(c(244, 2097, 2852, 3289),
+                                 meta_fields = "title")
+
+holmes_raw %>% count(title)
+```
+
+## Tidying the Holmes Novels
+
+Here I am tidying the Holmes books the same way as the Austen books, with one change. Each Gutenberg file starts with a table of contents ("Chapter I. The Science of Deduction"), and the chapter pattern from the book was counting those lines as chapters too. The real chapter headings are on a line by themselves ("Chapter I."), so I changed the pattern to only match a line that is just the word "chapter" and a number. *A Study in Scarlet* and *The Valley of Fear* are split into two parts that each start over at Chapter I, so their chapters are numbered straight through.
+
+```{r holmes-tidy}
+book_order <- c("A Study in Scarlet", "The Sign of the Four",
+                "The Hound of the Baskervilles", "The Valley of Fear")
+
+tidy_holmes <- holmes_raw %>%
+  rename(book = title) %>%
+  mutate(book = factor(book, levels = book_order)) %>%
+  group_by(book) %>%
+  mutate(
+    linenumber = row_number(),
+    # only count lines that are just "Chapter" and a number
+    chapter = cumsum(str_detect(text,
+                                regex("^\\s*chapter [\\divxlc]+\\.?\\s*$",
+                                      ignore_case = TRUE)))) %>%
+  ungroup() %>%
+  unnest_tokens(word, text)
+
+tidy_holmes %>%
+  group_by(book) %>%
+  summarise(chapters = max(chapter), words = n())
+```
+
+## The Two New Lexicons
+
+Loughran-McDonald was made by Tim Loughran and Bill McDonald (2011) for reading financial reports. They found that general lexicons get business language wrong. For example, "liability" and "tax" are negative in other lexicons but are normal words in finance. Besides positive and negative, it has four more categories: uncertainty, litigious (legal words), constraining and superfluous. It comes with `tidytext` through `get_sentiments("loughran")`.
+
+Syuzhet comes from Matthew Jockers' `syuzhet` package (2015), which was made for following the emotional ups and downs of novels. It scores about 10,700 words from -1 to +1, so it has more levels than Bing's positive or negative.
+
+```{r new-lexicons}
+loughran <- get_sentiments("loughran")
+loughran %>% count(sentiment, sort = TRUE)
+
+syuzhet_lex <- get_sentiment_dictionary("syuzhet")
+head(syuzhet_lex)
+```
+
+To compare all five lexicons the same way, I am turning each one into a table with a `word` and a `value`. AFINN and Syuzhet already have number scores. For Bing, NRC and Loughran, I am giving positive words a +1 and negative words a -1.
+
+```{r all-lexicons}
+# Turn a positive/negative lexicon into +1 and -1 values
+to_value <- function(lex) {
+  lex %>%
+    filter(sentiment %in% c("positive", "negative")) %>%
+    transmute(word, value = if_else(sentiment == "positive", 1, -1))
+}
+
+all_lexicons <- bind_rows(
+  "AFINN"    = get_sentiments("afinn") %>% select(word, value),
+  "Bing"     = to_value(get_sentiments("bing")),
+  "NRC"      = to_value(get_sentiments("nrc")),
+  "Loughran" = to_value(loughran),
+  "Syuzhet"  = syuzhet_lex %>% select(word, value),
+  .id = "lexicon"
+) %>%
+  distinct(lexicon, word, .keep_all = TRUE) %>%
+  mutate(lexicon = factor(lexicon, levels = c("AFINN", "Bing", "NRC",
+                                              "Loughran", "Syuzhet")))
+
+all_lexicons %>%
+  group_by(lexicon) %>%
+  summarise(words = n(),
+            positive = sum(value > 0),
+            negative = sum(value < 0),
+            pct_negative = round(100 * mean(value < 0), 1)) %>%
+  knitr::kable()
+```
+
+## Sentiment Across Each Holmes Novel
+
+This is the same plot as the Austen one, with the same 80-line sections and the Bing lexicon.
+
+```{r holmes-sentiment, fig.width=9, fig.height=5}
+holmes_sentiment <- tidy_holmes %>%
+  inner_join(get_sentiments("bing")) %>%
+  count(book, index = linenumber %/% 80, sentiment) %>%
+  pivot_wider(names_from = sentiment, values_from = n, values_fill = 0) %>%
+  mutate(sentiment = positive - negative)
+
+ggplot(holmes_sentiment, aes(index, sentiment, fill = book)) +
+  geom_col(show.legend = FALSE) +
+  facet_wrap(~book, ncol = 2, scales = "free_x")
+```
+
+Here I am putting both sets of books in one table to compare the average section score and the percent of sections that are negative.
+
+```{r holmes-vs-austen}
+bind_rows(
+  Austen = jane_austen_sentiment %>% mutate(book = as.character(book)),
+  Holmes = holmes_sentiment %>% mutate(book = as.character(book)),
+  .id = "author") %>%
+  group_by(author, book) %>%
+  summarise(sections = n(),
+            avg_sentiment = round(mean(sentiment), 1),
+            pct_negative_sections = round(100 * mean(sentiment < 0)),
+            .groups = "drop") %>%
+  knitr::kable()
+```
+
+The Holmes plot looks very different from the Austen one. Most of the bars are below zero, and they flip back and forth more often. That fits a mystery story: a calm scene at Baker Street, then a body, then a clue, then danger.
+
+The table shows the same thing. About 21% of Austen's sections are negative, compared with about 60% of the Holmes sections. Every Austen novel has a positive average and every Holmes novel has a negative one. *The Hound of the Baskervilles* and *A Study in Scarlet* are the darkest, and *The Sign of the Four* is the closest to neutral.
+
+## Comparing All Five Lexicons on One Novel
+
+Here I am repeating the *Pride and Prejudice* comparison, but on *The Hound of the Baskervilles* and with all five lexicons. Each section's score is the sum of its word values.
+
+```{r hound-compare, fig.width=9, fig.height=8}
+hound <- tidy_holmes %>%
+  filter(book == "The Hound of the Baskervilles")
+
+hound_scores <- hound %>%
+  inner_join(all_lexicons, by = "word", relationship = "many-to-many") %>%
+  group_by(lexicon, index = linenumber %/% 80) %>%
+  summarise(sentiment = sum(value), .groups = "drop")
+
+hound_scores %>%
+  ggplot(aes(index, sentiment, fill = lexicon)) +
+  geom_col(show.legend = FALSE) +
+  facet_wrap(~lexicon, ncol = 1, scales = "free_y") +
+  labs(x = "80-line section", y = "Net sentiment")
+```
+
+To check how closely the lexicons agree, I am calculating the correlation between their section scores. A 1 means two lexicons go up and down together perfectly.
+
+```{r hound-correlation}
+hound_scores %>%
+  pivot_wider(names_from = lexicon, values_from = sentiment, values_fill = 0) %>%
+  select(-index) %>%
+  cor() %>%
+  round(2)
+```
+
+Just like in the *Pride and Prejudice* example, AFINN, Bing, NRC and Syuzhet follow the same shape at different levels, and their correlations with each other are between 0.74 and 0.92. Bing and Syuzhet agree the most. Loughran-McDonald is the odd one out, with correlations of only 0.45 to 0.61 with the others. That makes sense because it was made for financial reports, so it misses most of the emotional words in a novel.
+
+All four general lexicons pick the same section as the most negative part of the book. It is in chapter 14, where the hound finally attacks on the moor. Loughran-McDonald picks a section in chapter 15 instead.
+
+## How Each Lexicon Scores Both Sets of Books
+
+This table is the main comparison between the original example and my extension. For each lexicon, it shows the percent of all words the lexicon recognized, the percent of those that were positive, and the net sentiment per 1,000 words (positive words minus negative words).
+
+```{r corpus-comparison}
+all_books <- bind_rows(
+  Austen = tidy_books %>% select(book, word),
+  Holmes = tidy_holmes %>% mutate(book = as.character(book)) %>% select(book, word),
+  .id = "author"
+)
+
+total_words <- all_books %>% count(author, name = "total_words")
+
+lexicon_scores <- all_books %>%
+  inner_join(all_lexicons, by = "word", relationship = "many-to-many") %>%
+  group_by(author, lexicon) %>%
+  summarise(matched = n(),
+            pct_positive = 100 * mean(value > 0),
+            net = sum(sign(value)),
+            .groups = "drop") %>%
+  left_join(total_words, by = "author") %>%
+  mutate(pct_matched = 100 * matched / total_words,
+         net_per_1000 = 1000 * net / total_words)
+
+lexicon_scores %>%
+  select(lexicon, author, pct_matched, pct_positive, net_per_1000) %>%
+  arrange(lexicon, author) %>%
+  knitr::kable(digits = 1)
+```
+
+```{r corpus-plot, fig.width=9, fig.height=4.5}
+ggplot(lexicon_scores, aes(x = lexicon, y = net_per_1000, fill = author)) +
+  geom_col(position = "dodge") +
+  geom_hline(yintercept = 0) +
+  labs(title = "Net Sentiment per 1,000 Words",
+       x = "Lexicon", y = "Positive minus negative words", fill = "Author")
+```
+
+All five lexicons score Holmes as less positive than Austen, which is the main difference from the original example. With Bing, Austen has about 12.3 more positive words than negative words per 1,000 words, while Holmes has about 5 more negative words than positive.
+
+The lexicons don't agree on whether Holmes is actually negative, though. AFINN, Bing and Loughran-McDonald put it below zero, but NRC and Syuzhet still score it as a little positive. Both of those lexicons have more positive words to start with (see the lexicon table above). So whether a book comes out "positive" or "negative" depends partly on which lexicon you pick, not just on the book.
+
+The two new lexicons work very differently. Syuzhet recognizes the most words (about 10.5% of the Holmes text) because it has the biggest word list. Loughran-McDonald only recognizes about 2.3%, because a lot of common story words like "love," "death," "dark," "dead," "strange" and "terror" are not in it. It even scores Austen as negative.
+
+## Most Common Positive and Negative Words in Holmes
+
+Here I am repeating the top words chart for Holmes, first with Bing and then with Loughran-McDonald.
+
+```{r holmes-bing-words, fig.width=8, fig.height=4.5}
+holmes_bing_counts <- tidy_holmes %>%
+  inner_join(get_sentiments("bing")) %>%
+  count(word, sentiment, sort = TRUE)
+
+holmes_bing_counts %>%
+  group_by(sentiment) %>%
+  slice_max(n, n = 10, with_ties = FALSE) %>%
+  ungroup() %>%
+  mutate(word = reorder(word, n)) %>%
+  ggplot(aes(n, word, fill = sentiment)) +
+  geom_col(show.legend = FALSE) +
+  facet_wrap(~sentiment, scales = "free_y") +
+  labs(title = "Holmes: Top Bing Words", x = "Contribution to sentiment", y = NULL)
+```
+
+```{r holmes-loughran-words, fig.width=8, fig.height=4.5}
+holmes_lm_counts <- tidy_holmes %>%
+  inner_join(loughran %>% filter(sentiment %in% c("positive", "negative"))) %>%
+  count(word, sentiment, sort = TRUE)
+
+holmes_lm_counts %>%
+  group_by(sentiment) %>%
+  slice_max(n, n = 10, with_ties = FALSE) %>%
+  ungroup() %>%
+  mutate(word = reorder(word, n)) %>%
+  ggplot(aes(n, word, fill = sentiment)) +
+  geom_col(show.legend = FALSE) +
+  facet_wrap(~sentiment, scales = "free_y") +
+  labs(title = "Holmes: Top Loughran-McDonald Words", x = "Contribution to sentiment", y = NULL)
+```
+
+In Austen, the top negative Bing words were "miss," "poor," "doubt," "object" and "sorry." In Holmes they are "death," "dark," "doubt," "fear" and "strange," and "murder" and "crime" are also in the top 10. "Miss" is still on the list (72 times), since Holmes also has characters like Miss Morstan. Holmes has the same kind of problem with positive words. "Well" is the top positive word with 473 uses, even though it is usually just a filler word, like "Well, Watson, what do you make of it?" "Like" is third, and it is almost always a comparison ("like a shadow"), not a feeling. Like "miss" in Austen, these words should go on a custom stop word list.
+
+Loughran-McDonald picks out different words. Its top negative word is "against," which isn't really negative in a story, and its top positive words are plain words like "good," "great" and "better."
+
+## Loughran-McDonald's Extra Categories
+
+Loughran-McDonald has categories the other lexicons don't have. Litigious words are about law and crime, so they should show up a lot more in detective stories than in Austen.
+
+```{r loughran-categories, fig.width=8, fig.height=4}
+lm_categories <- all_books %>%
+  inner_join(loughran, by = "word", relationship = "many-to-many") %>%
+  count(author, sentiment) %>%
+  left_join(total_words, by = "author") %>%
+  mutate(per_1000 = 1000 * n / total_words)
+
+ggplot(lm_categories, aes(x = reorder(sentiment, per_1000), y = per_1000, fill = author)) +
+  geom_col(position = "dodge") +
+  coord_flip() +
+  labs(title = "Loughran-McDonald Categories per 1,000 Words",
+       x = NULL, y = "Words per 1,000", fill = "Author")
+```
+
+```{r litigious-words}
+tidy_holmes %>%
+  inner_join(loughran %>% filter(sentiment == "litigious")) %>%
+  count(word, sort = TRUE) %>%
+  head(10)
+```
+
+This didn't turn out the way I expected. Holmes has about 3.2 litigious words per 1,000 compared with 2.9 for Austen, so only a little more. The Holmes list does have crime words like "crime," "convict" and "criminal," but the top word in both sets of books is "shall." Loughran-McDonald counts it as litigious because it shows up in contracts, but in a novel it is just a normal word. Austen also uses words like "conviction," "justice" and "consent" a lot. The bigger differences are in the other categories. Holmes has about half as many positive words per 1,000 as Austen, and fewer uncertainty and constraining words.
+
+## Most Negative Chapter in Each Holmes Novel
+
+Last, I am repeating the final step from the chapter: which chapter in each Holmes book has the highest share of negative Bing words?
+
+```{r holmes-negative-chapters}
+holmes_wordcounts <- tidy_holmes %>%
+  group_by(book, chapter) %>%
+  summarize(words = n())
+
+tidy_holmes %>%
+  semi_join(bingnegative) %>%
+  group_by(book, chapter) %>%
+  summarize(negativewords = n()) %>%
+  left_join(holmes_wordcounts, by = c("book", "chapter")) %>%
+  mutate(ratio = negativewords/words) %>%
+  filter(chapter != 0) %>%
+  slice_max(ratio, n = 1) %>%
+  ungroup()
+```
+
+For Austen, the most negative chapters have about 3.4% to 5.3% negative words. For Holmes it is about the same, 3.7% to 4.9%. So the darkest chapters in both sets of books are about equally dark. The real difference is that Holmes stays negative most of the way through, while Austen has a few sad chapters in mostly happy stories. The chapters it picks also make sense. In *The Hound of the Baskervilles* it is chapter 12, "Death on the Moor," where a man is found dead. In *A Study in Scarlet* it is chapter 12 (Part II, chapter 5), "The Avenging Angels."
+
+# Conclusion
+
+I was able to reproduce the Chapter 2 example and got the same results as the book. Austen's novels lean positive, the three lexicons follow the same shape at different levels, and "miss" gets counted as a negative word when it is really a title.
+
+Running the same code on the Sherlock Holmes novels answered my question. All five lexicons picked up that Holmes is darker than Austen. Only about 21% of Austen's sections were negative compared with about 60% for Holmes, and the top negative words changed from "miss" and "poor" to "death," "dark" and "murder." The lexicons didn't fully agree, though. NRC and Syuzhet still scored Holmes as slightly positive because they have more positive words, so the lexicon you pick matters almost as much as the text.
+
+The two new lexicons showed why it matters what a lexicon was made for. Syuzhet was made for novels, recognized the most words and followed Bing and AFINN closely. Loughran-McDonald was made for financial reports, so it missed most of the emotional words and didn't match the other lexicons well. I expected its litigious category to stand out in the detective stories, but Holmes only had slightly more litigious words than Austen.
+
+One limitation is that all of these lexicons score one word at a time, so they can't tell when a word like "well" or "like" isn't being used as a feeling, or when a word is negated, like "not happy." A custom stop word list for Holmes would help with the first problem.
+
+# Sources
+
+- Silge, J., & Robinson, D. (2017). [*Text Mining with R: A Tidy Approach*](https://www.tidytextmining.com/sentiment.html), Chapter 2, "Sentiment analysis with tidy data." The example code is from the book's [GitHub repository](https://github.com/dgrtwo/tidy-text-mining), file `02-sentiment-analysis.Rmd`.
+- The Sherlock Holmes novels by Arthur Conan Doyle are from [Project Gutenberg](https://www.gutenberg.org), downloaded with the `gutenbergr` package.
+- Loughran, T., & McDonald, B. (2011). When is a liability not a liability? Textual analysis, dictionaries, and 10-Ks. *The Journal of Finance, 66*(1), 35-65.
+- Jockers, M. L. (2015). [*Syuzhet: Extract Sentiment and Plot Arcs from Text*](https://github.com/mjockers/syuzhet).
+- The AFINN, Bing and NRC lexicons come from Finn Årup Nielsen (2011), Minqing Hu and Bing Liu (2004), and Saif Mohammad and Peter Turney (2013), through the `tidytext` and `textdata` packages.
+- Claude (Anthropic) was used to help with the code and with writing up the results.
