@@ -2185,7 +2185,7 @@ vertical-align: -.125em;
   <li><a href="#from-valve" id="toc-from-valve" class="nav-link" data-scroll-target="#from-valve"><span class="header-section-number">3.2</span> From Valve</a></li>
   <li><a href="#from-the-community" id="toc-from-the-community" class="nav-link" data-scroll-target="#from-the-community"><span class="header-section-number">3.3</span> From the Community</a></li>
   </ul></li>
-  <li><a href="#patch-notes-recommendations-for-improvement" id="toc-patch-notes-recommendations-for-improvement" class="nav-link" data-scroll-target="#patch-notes-recommendations-for-improvement"><span class="header-section-number">4</span> Patch Notes: Recommendations for Improvement</a></li>
+  <li><a href="#recommendations-for-improvement" id="toc-recommendations-for-improvement" class="nav-link" data-scroll-target="#recommendations-for-improvement"><span class="header-section-number">4</span> Recommendations for Improvement</a></li>
   <li><a href="#references" id="toc-references" class="nav-link" data-scroll-target="#references"><span class="header-section-number">5</span> References</a></li>
   </ul>
 </nav>
@@ -2226,8 +2226,8 @@ vertical-align: -.125em;
 
 <section id="introduction" class="level2" data-number="1">
 <h2 data-number="1" class="anchored" data-anchor-id="introduction"><span class="header-section-number">1</span> Introduction</h2>
-<p>Steam is the dominant PC game storefront, and it has an unusual discovery problem: the catalog is enormous, new games arrive every day, and one purchase can mean twenty minutes of use or two thousand hours. That last point is the thread running through this report. Steam does not recommend games based on what you click or rate. It recommends them based on <strong>how long you play</strong>.</p>
-<p>I focus on the <strong>Interactive Recommender</strong>, the “Recommendations based on the games you play” section of the store. It began as Steam Labs Experiment 002 in July 2019 and became a permanent store feature on March 18, 2020 (Valve, 2020). I also refer to the <strong>Discovery Queue</strong>, because Valve positions the two as complements.</p>
+<p>Steam is the dominant PC game storefront, and it has an unusual discovery problem: the catalog is enormous, new games arrive every day, and one purchase can mean twenty minutes of use or two thousand hours. That last point is the thread running through this report. Steam does not recommend games based on what you click or rate. It recommends them based on how long you play.</p>
+<p>I focus on the Interactive Recommender, the “Recommendations based on the games you play” section of the store. It began as Steam Labs Experiment 002 in July 2019 and became a permanent store feature on March 18, 2020 (Valve, 2020). I also refer to the Discovery Queue, because Valve positions the two as complements.</p>
 </section>
 <section id="scenario-design" class="level2" data-number="2">
 <h2 data-number="2" class="anchored" data-anchor-id="scenario-design"><span class="header-section-number">2</span> Scenario Design</h2>
@@ -2294,19 +2294,14 @@ vertical-align: -.125em;
 <p>This is a sensible trade-off: the expensive work runs offline and the “interactive” part is cheap. The cost is that a tag filter only searches those 200 candidates, so it can return few results even when good matches exist deeper in the catalog.</p>
 </section>
 </section>
-<section id="patch-notes-recommendations-for-improvement" class="level2" data-number="4">
-<h2 data-number="4" class="anchored" data-anchor-id="patch-notes-recommendations-for-improvement"><span class="header-section-number">4</span> Patch Notes: Recommendations for Improvement</h2>
-<p>If the recommender got an update, these are the changes I would ship.</p>
+<section id="recommendations-for-improvement" class="level2" data-number="4">
+<h2 data-number="4" class="anchored" data-anchor-id="recommendations-for-improvement"><span class="header-section-number">4</span> Recommendations for Improvement</h2>
 <p><strong>1. Fix cold start for new games and new players.</strong> Pure collaborative filtering leaves a new release invisible during its most important days. Feeding the model game details such as tags, store-page text, and developer history would let it place a new game near similar ones before anyone has played it. A short onboarding step (“pick five games you love”) would do the same for new players, who currently get nothing.</p>
 <p><strong>2. Balance out playtime bias.</strong> Hours played depends on game design. A four-hour story game finished in one sitting is a stronger endorsement than forty idle hours in a live-service game. Comparing playtime to a game’s typical length, and counting negative signals like refunds, negative reviews, and “ignore” clicks, would make the signal more honest.</p>
-<p><strong>3. Search the whole catalog.</strong> Instead of filtering a fixed list of 200 games, the recommender should search every game in the store, so that tag, price, language, and Steam Deck filters always have something to show.</p>
-<p><strong>4. Keep room for discovery.</strong> Valve is expanding personalization. In testing an algorithmic Discounts &amp; Events page it showed about ten times as many games per day, and it plans to retire the hand-scheduled calendar in early 2027 (GamesRadar+, 2026). More personalization raises the risk of a loop where games that get shown get played, and games that get played get shown. Saving a few slots for overlooked games, and tracking how much of the catalog gets recommended, would protect both players and small developers.</p>
-<p><strong>5. Show the receipts.</strong> Steam’s current reasons are generic. Naming the evidence (“because you spent 80 hours in X”) and letting the player reject it would build trust and give players a direct way to correct the model.</p>
 </section>
 <section id="references" class="level2" data-number="5">
 <h2 data-number="5" class="anchored" data-anchor-id="references"><span class="header-section-number">5</span> References</h2>
 <p>GameGrin. (2019). <em>Steam introduces the Interactive Recommender.</em> <a href="https://www.gamegrin.com/news/steam-introduces-the-interactive-recommender/" class="uri">https://www.gamegrin.com/news/steam-introduces-the-interactive-recommender/</a></p>
-<p>GamesRadar+. (2026, September 29). <em>Another Steam page is being turned into an algorithm as Valve aims to show 10x more games to customers.</em> <a href="https://www.gamesradar.com/platforms/pc-gaming/another-steam-page-is-being-turned-into-an-algorithm-as-valve-aims-to-show-10x-more-games-to-customers/" class="uri">https://www.gamesradar.com/platforms/pc-gaming/another-steam-page-is-being-turned-into-an-algorithm-as-valve-aims-to-show-10x-more-games-to-customers/</a></p>
 <p>GIGAZINE. (2024, February 21). <em>Valve explains “How Steam decides which games are recommended.”</em> <a href="https://gigazine.net/gsc_news/en/20240221-steam-visibility/" class="uri">https://gigazine.net/gsc_news/en/20240221-steam-visibility/</a></p>
 <p>Valve. (2020, March 18). <em>Introducing the Steam Interactive Recommender.</em> Steam News. <a href="https://store.steampowered.com/news/app/593110/view/1716373422378712840" class="uri">https://store.steampowered.com/news/app/593110/view/1716373422378712840</a></p>
 <p>woctezuma. (n.d.). <em>steam-labs-recommender</em> [Computer software]. GitHub. <a href="https://www.github.com/woctezuma/steam-labs-recommender" class="uri">https://www.github.com/woctezuma/steam-labs-recommender</a></p>
