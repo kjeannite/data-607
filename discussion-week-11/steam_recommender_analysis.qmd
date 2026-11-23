@@ -1,0 +1,84 @@
+---
+title: "Data 607: Discussion 11"
+subtitle: "Analyzing Steam's Recommender System"
+author: "Kenny Jeannite"
+date: today
+format:
+  html:
+    toc: true
+    number-sections: true
+    embed-resources: true
+---
+
+## Introduction
+
+Steam is the dominant PC game storefront, and it has an unusual discovery problem: the catalog is enormous, new games arrive every day, and one purchase can mean twenty minutes of use or two thousand hours. That last point is the thread running through this report. Steam does not recommend games based on what you click or rate. It recommends them based on **how long you play**.
+
+I focus on the **Interactive Recommender**, the "Recommendations based on the games you play" section of the store. It began as Steam Labs Experiment 002 in July 2019 and became a permanent store feature on March 18, 2020 (Valve, 2020). I also refer to the **Discovery Queue**, because Valve positions the two as complements.
+
+## Scenario Design
+
+Steam is a marketplace with two sides, so I ran the three scenario design questions for each side and put them next to each other.
+
+| | **Players** | **Valve and Developers** |
+|---|---|---|
+| **Who are the target users?** | Anyone with a Steam account and some play history. Valve describes two groups: mainstream players looking for a well-known game they missed, and heavy players who have seen the hits and want something obscure (Valve, 2020). | Valve itself, and the developers who depend on store visibility, especially small studios with no marketing budget. |
+| **What are their key goals?** | Find a game they will actually play, not just buy. Do it quickly. Stay in control, since mood changes from night to night. Avoid paying for a bad fit. | Valve wants to sell games, keep players coming back, and keep the trust of both players and developers. It does not sell ad placements in the store (GIGAZINE, 2024). Developers want to reach the right audience. |
+| **How does Steam help?** | Results come from playtime, so they reflect what the player does. Two sliders (popular to niche, newer to older) and a tag filter let the player steer, and the settings carry over to the homepage (Valve, 2020). Play Next uses the same model to pick from the player's own backlog. | A model trained on playtime is hard to game with tags or paid reviews. Valve's advice to developers was simply to make a game people enjoy playing (GameGrin, 2019). The niche slider gives small games a way in, and purchases from the page covered well over 10,000 different games (Valve, 2020). |
+
+The two columns line up more than they do on most platforms. Because Steam sells no ad slots, the only way a game rises is by being played, which is also what players want.
+
+## Reverse Engineering
+
+### How a Recommendation Gets Made
+
+Putting together what Valve has published and what outside analysis found, the process looks roughly like this:
+
+1. **Collect playtime.** Valve logs hours played for millions of users.
+2. **Train the model offline.** A neural network learns which games tend to be played by the same people.
+3. **Precompute lists.** For each user, the page appears to receive 30 ranked lists of 200 games, one for each mix of popularity and recency settings.
+4. **Blend in the browser.** Moving a slider blends the nearest lists, which is why it feels instant.
+5. **Filter last.** Tags are applied to those ranked results, not fed into the model.
+
+Steps 1, 2, and 5 come from Valve. Steps 3 and 4 come from outside analysis and are marked as inference below.
+
+### From Valve
+
+The 2019 Labs announcement, reproduced by GameGrin (2019), gives the most technical detail:
+
+- It is collaborative rather than content-based. Tags, review scores, genre, and price are not inputs. Release date is the only explicit game feature.
+- Games with no play data cannot be recommended. Valve relies on the Discovery Queue to surface brand-new releases.
+
+The 2020 launch post adds how Valve judged success: click-through rate and conversion to wishlist and purchase, which held up against other store features for months rather than weeks (Valve, 2020). The same model also shows up elsewhere in the store, for example as a "Players like you love this game" reason on store pages.
+
+### From the Community
+
+A community project (woctezuma, n.d.) inspected the data the recommender page loads and compared it with Valve's patent. These are one person's findings, so I treat them as inference. Besides the 30 precomputed lists, it found that owned games with zero playtime seem to be ignored, and an account with no playtime gets no recommendations at all.
+
+This is a sensible trade-off: the expensive work runs offline and the "interactive" part is cheap. The cost is that a tag filter only searches those 200 candidates, so it can return few results even when good matches exist deeper in the catalog.
+
+## Patch Notes: Recommendations for Improvement
+
+If the recommender got an update, these are the changes I would ship.
+
+**1. Fix cold start for new games and new players.** Pure collaborative filtering leaves a new release invisible during its most important days. Feeding the model game details such as tags, store-page text, and developer history would let it place a new game near similar ones before anyone has played it. A short onboarding step ("pick five games you love") would do the same for new players, who currently get nothing.
+
+**2. Balance out playtime bias.** Hours played depends on game design. A four-hour story game finished in one sitting is a stronger endorsement than forty idle hours in a live-service game. Comparing playtime to a game's typical length, and counting negative signals like refunds, negative reviews, and "ignore" clicks, would make the signal more honest.
+
+**3. Search the whole catalog.** Instead of filtering a fixed list of 200 games, the recommender should search every game in the store, so that tag, price, language, and Steam Deck filters always have something to show.
+
+**4. Keep room for discovery.** Valve is expanding personalization. In testing an algorithmic Discounts & Events page it showed about ten times as many games per day, and it plans to retire the hand-scheduled calendar in early 2027 (GamesRadar+, 2026). More personalization raises the risk of a loop where games that get shown get played, and games that get played get shown. Saving a few slots for overlooked games, and tracking how much of the catalog gets recommended, would protect both players and small developers.
+
+**5. Show the receipts.** Steam's current reasons are generic. Naming the evidence ("because you spent 80 hours in X") and letting the player reject it would build trust and give players a direct way to correct the model.
+
+## References
+
+GameGrin. (2019). *Steam introduces the Interactive Recommender.* <https://www.gamegrin.com/news/steam-introduces-the-interactive-recommender/>
+
+GamesRadar+. (2026, September 29). *Another Steam page is being turned into an algorithm as Valve aims to show 10x more games to customers.* <https://www.gamesradar.com/platforms/pc-gaming/another-steam-page-is-being-turned-into-an-algorithm-as-valve-aims-to-show-10x-more-games-to-customers/>
+
+GIGAZINE. (2024, February 21). *Valve explains "How Steam decides which games are recommended."* <https://gigazine.net/gsc_news/en/20240221-steam-visibility/>
+
+Valve. (2020, March 18). *Introducing the Steam Interactive Recommender.* Steam News. <https://store.steampowered.com/news/app/593110/view/1716373422378712840>
+
+woctezuma. (n.d.). *steam-labs-recommender* [Computer software]. GitHub. <https://www.github.com/woctezuma/steam-labs-recommender>
